@@ -113,7 +113,13 @@ internal object NativeCore {
      * Where the picture sits: at the top of a portrait surface when [portraitTop], [topMargin]
      * surface pixels down (clear of the display cutout), else in the middle.
      */
-    @JvmStatic fun setDisplayLayout(portraitTop: Boolean, topMargin: Int) = Unit
+    @JvmStatic fun setDisplayLayout(portraitTop: Boolean, topMargin: Int) {
+        this.portraitTop = portraitTop
+        this.topMargin = topMargin
+    }
+
+    @Volatile private var portraitTop = true
+    @Volatile private var topMargin = 0
 
     /** The edges of the surface the on-screen messages and overlays keep clear of, in surface pixels. */
     @JvmStatic fun setOsdSafeArea(left: Int, top: Int, right: Int, bottom: Int) = Unit
@@ -408,7 +414,7 @@ internal object NativeCore {
         val s = surface?.takeIf { it.isValid } ?: return
         val canvas = runCatching { s.lockHardwareCanvas() }.getOrNull() ?: return
         try {
-            draw(canvas, canvas.width, canvas.height)
+            draw(canvas, canvas.width, canvas.height, onSurface = true)
         } finally {
             s.unlockCanvasAndPost(canvas)
         }
@@ -422,12 +428,13 @@ internal object NativeCore {
     }.getOrNull().also { bitmap.recycle() }
 
     /** A 4:3 test picture: a moving hue, the game, the frame and what the first pad holds. */
-    private fun draw(canvas: Canvas, width: Int, height: Int) {
+    private fun draw(canvas: Canvas, width: Int, height: Int, onSurface: Boolean = false) {
         canvas.drawColor(Color.BLACK)
         val w = minOf(width.toFloat(), height * 4f / 3f)
         val h = w * 3f / 4f
         val left = (width - w) / 2f
-        val top = (height - h) / 2f
+        // On a portrait surface the picture sits at the top, clear of the cutout, as setDisplayLayout says.
+        val top = if (onSurface && portraitTop && height > width) topMargin.toFloat() else (height - h) / 2f
         paint.color = Color.HSVToColor(floatArrayOf((frame % 360).toFloat(), 0.5f, 0.35f))
         canvas.drawRect(left, top, left + w, top + h, paint)
 
