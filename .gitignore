@@ -32,5 +32,5 @@ keystore.properties
 /docs/
 
 
-# The core's prebuilt third-party libraries (external/aegirine-core/scripts/deps)
+# A core's prebuilt third-party libraries
 /external/core-deps/

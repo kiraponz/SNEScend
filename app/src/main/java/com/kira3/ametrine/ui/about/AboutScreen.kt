@@ -95,7 +95,7 @@ fun AboutScreen(
                     summary = stringResource(R.string.about_core_summary, commit.take(7)),
                     index = 1,
                     // Without a commit there is no tree to link to.
-                    onClick = if (commit != "unknown") ({ openLink(coreSourceUrl(commit)) }) else null,
+                    onClick = coreSourceUrl(commit)?.takeIf { commit != "unknown" }?.let { url -> { openLink(url) } },
                 )
             }
             item(key = "license") {

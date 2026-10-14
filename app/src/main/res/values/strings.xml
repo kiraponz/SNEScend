@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Aegirine</string>
+    <string name="app_name">EmuFrontend</string>
 
     <!-- Common -->
     <string name="navigate_back">Back</string>
@@ -53,7 +53,7 @@
     <string name="rewind_ago_seconds">%1$d s ago</string>
     <string name="rewind_ago_minutes">%1$d min ago</string>
     <string name="rewind_failed">Could not rewind</string>
-    <string name="emulation_screenshot_saved">Screenshot saved to Pictures/Aegirine</string>
+    <string name="emulation_screenshot_saved">Screenshot saved to Pictures/EmuFrontend</string>
     <string name="emulation_screenshot_failed">Could not save the screenshot</string>
 
     <!-- In-game menu -->
@@ -644,20 +644,20 @@
     <string name="settings_about_summary">Version, source code and licenses</string>
     <string name="about_title">About</string>
     <string name="about_version">Version %1$s</string>
-    <string name="about_description">A PS1 emulator for Android. Its emulation core is aegirine-core, a fork of the last GPL-3.0 version of DuckStation.</string>
-    <string name="about_bios_note">Games need a BIOS dumped from your own PS1. Aegirine does not include any BIOS or games.</string>
+    <string name="about_description">An emulator frontend for Android, with a stub emulation core to put a real one in place of.</string>
+    <string name="about_bios_note">Games need a BIOS dumped from your own console. EmuFrontend does not include any BIOS or games.</string>
     <string name="about_source">Source code</string>
     <string name="about_core">Emulation core</string>
-    <string name="about_core_summary">aegirine-core at %1$s</string>
+    <string name="about_core_summary">Stub core (%1$s)</string>
     <string name="about_license">License</string>
     <string name="about_license_summary">GNU General Public License, version 3</string>
     <string name="about_licenses">Open source licenses</string>
     <string name="about_licenses_summary">The libraries, fonts and data this app includes</string>
     <string name="about_legal">This program comes with ABSOLUTELY NO WARRANTY. It is free software, and you are welcome to redistribute it under the terms of the GNU General Public License, version 3.</string>
-    <string name="about_trademark">Aegirine is not affiliated with Sony Interactive Entertainment or DuckStation. PlayStation is a trademark of Sony Interactive Entertainment Inc.</string>
+    <string name="about_trademark">EmuFrontend is not affiliated with any console maker.</string>
     <string name="about_no_browser">No app can open this link</string>
-    <string name="about_source_url" translatable="false">https://github.com/kiraponz/Aegirine</string>
-    <string name="about_core_url" translatable="false">https://github.com/kiraponz/aegirine-core/tree/%1$s</string>
+    <string name="about_source_url" translatable="false">https://github.com/kiraponz/EmuFrontend</string>
+    <string name="about_core_url" translatable="false">https://github.com/kiraponz/EmuFrontend</string>
     <string name="licenses_title">Open source licenses</string>
     <string name="licenses_group_core">Emulation core</string>
     <string name="licenses_group_native">Native libraries</string>

@@ -7,11 +7,9 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// The commit of the emulation core (the aegirine-core submodule), shown in About.
-val coreCommit: String = providers.exec {
-    commandLine("git", "-C", rootProject.file("external/aegirine-core").path, "rev-parse", "HEAD")
-    isIgnoreExitValue = true
-}.standardOutput.asText.get().trim().ifEmpty { "unknown" }
+// The commit of the emulation core, shown in About. The stub core has none; a core kept as a git
+// submodule reads it with `git -C <submodule> rev-parse HEAD`, as Aegirine does.
+val coreCommit = "unknown"
 
 // The release signing key, from keystore.properties at the root (never committed; see
 // RELEASING.md). Without it a release build is unsigned.
@@ -26,7 +24,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.kira3.aegirine"
+        applicationId = "com.kira3.emufrontend"
         minSdk = 29
         targetSdk = 37
         versionCode = 1
@@ -35,7 +33,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "CORE_COMMIT", "\"$coreCommit\"")
         ndk {
-            // :emucore only ships arm64-v8a.
+            // The cores this frontend is for target arm64-v8a only.
             abiFilters.add("arm64-v8a")
         }
     }

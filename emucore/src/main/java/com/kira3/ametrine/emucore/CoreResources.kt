@@ -56,6 +56,12 @@ internal object CoreResources {
 
         // Start clean so files dropped from a newer build don't linger.
         target.deleteRecursively()
+        // A core without resources (the stub) ships none.
+        if (context.assets.list(ASSET_ROOT).isNullOrEmpty()) {
+            marker.parentFile?.mkdirs()
+            marker.writeText(install)
+            return
+        }
         val ok = copyTree(context.assets, ASSET_ROOT, target)
         if (ok) {
             marker.writeText(install)

@@ -21,14 +21,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The app's only way into the emulation core (aegirine-core). Wraps [NativeCore] so the JNI
- * boundary stays inside this module.
+ * The app's only way into the emulation core. Wraps [NativeCore] (a Kotlin stub in this
+ * template, JNI with a real core) so the core boundary stays inside this module.
  *
  * One instance per process (the core itself is a process-wide singleton). Call
  * [initialize] once before anything else.
  *
- * Moving from ARMSX2 to aegirine-core is done in steps (docs/CORE.md). What a step has not
- * reached yet does nothing here and says which step brings it ("Step n").
+ * The API is the one the app's screens use; a new core keeps it and fills in [NativeCore].
  */
 class EmulatorCore(context: Context) {
     private val appContext = context.applicationContext
@@ -258,7 +257,7 @@ class EmulatorCore(context: Context) {
      * [ubwcFlagHint] turns on Turnip's UBWC flag hint, which recent Turnip builds need on
      * Adreno 740 to draw correctly; other drivers ignore it. Call before [runVm].
      *
-     * The core only uses the system driver: Aegirine offers no custom driver (docs/CORE.md).
+     * The core only uses the system driver; the custom driver is not offered.
      */
     @Suppress("UNUSED_PARAMETER")
     fun useVulkanDriver(driver: VulkanDriver?, ubwcFlagHint: Boolean) {
