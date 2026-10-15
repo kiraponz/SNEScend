@@ -35,6 +35,7 @@
 #include <android/log.h>
 #include <android/native_window.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -652,6 +653,8 @@ private:
 
 	void Loop()
 	{
+		// Named, or it keeps the name of the thread that started it (a coroutine's DefaultDispatcher).
+		pthread_setname_np(pthread_self(), "Presenter");
 		bool redraw = false;
 		while(true) {
 			uint32_t width, height, topMargin;
@@ -922,6 +925,7 @@ std::vector<uint8_t> FramePng(uint32_t maxWidth)
 
 void RewindLoop()
 {
+	pthread_setname_np(pthread_self(), "Rewind");
 	auto last = Clock::now();
 	uint64_t nextPoint = 0;
 	while(true) {
@@ -1388,6 +1392,7 @@ bool LoadRewindPoint(uint32_t index)
 void SaveScreenshot(const std::string& path)
 {
 	std::thread([path] {
+		pthread_setname_np(pthread_self(), "Screenshot");
 		vector<uint32_t> pixels;
 		uint32_t width, height;
 		double aspect;
