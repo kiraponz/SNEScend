@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
@@ -92,6 +93,9 @@ class EmulationActivity : ComponentActivity() {
     private val core: EmulatorCore by lazy { container.emulatorCore }
 
     private var emulationThread: Thread? = null
+
+    /** Sends the battery save to the save folder each time the core writes it, one at a time. */
+    private val saveCopies = Executors.newSingleThreadExecutor { Thread(it, "SaveCopies") }
 
     /** True when onStop paused the VM, so onStart knows to resume it. */
     private var pausedWhileHidden = false
@@ -447,10 +451,28 @@ class EmulationActivity : ComponentActivity() {
         // Every game the core runs gets this game's cheats, so a game without a serial gets none.
         core.setCheats(serial?.let { container.cheatRepository.load(it) }.orEmpty())
 
+        // The copy of the battery save in the save folder, when it changed there, goes in first.
+        val saveSerial = serial
+        val sync = container.saveFolderSync
+        val saveName = saveSerial?.let {
+            withContext(Dispatchers.IO) {
+                val name = sync.gameName(gameUri) ?: it
+                sync.pull(it, name)
+                name
+            }
+        }
+        core.batterySavedHandler = if (saveSerial != null && saveName != null) {
+            { saveCopies.execute { sync.push(saveSerial, saveName) } }
+        } else {
+            null
+        }
+
         currentDiscUri = gameUri
         Log.i(TAG, "Booting $gameUri (serial $serial)" + if (suspended != null) " from ${suspended.name}" else "")
         emulationThread = thread(name = "Emulation") {
             val error = core.runVm(gameUri.toString(), serial)
+            // The core wrote the save as the game stopped; the process may end right after this.
+            if (saveSerial != null && saveName != null) sync.push(saveSerial, saveName)
             runOnUiThread { onVmStopped(gameUri, error) }
         }
         suspended?.let { file ->
@@ -1310,6 +1332,8 @@ class EmulationActivity : ComponentActivity() {
         if (serial != null && core.hasActiveVm && !stateBusy) {
             suspendSave = lifecycleScope.launch { saveSuspendState() }
         }
+        // And the battery save goes to disk (and to the save folder) now rather than in a second.
+        if (core.hasActiveVm) thread(name = "BatteryFlush") { core.flushBatterySave() }
     }
 
     /** Adds the time since [onStart] to the game's play time, and marks it as just played. */

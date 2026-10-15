@@ -4,6 +4,8 @@
 #include "android_host.h"
 
 #include "Core/Shared/Emulator.h"
+// Not "Core/Shared/...": the copy external/patches/battery-saver.patch changed is found by this path.
+#include "Shared/BatteryManager.h"
 #include "Core/Shared/EmuSettings.h"
 #include "Core/Shared/SettingTypes.h"
 #include "Core/Shared/KeyManager.h"
@@ -18,6 +20,7 @@
 #include "Core/Shared/Audio/BaseSoundManager.h"
 #include "Core/Shared/Video/VideoRenderer.h"
 #include "Core/Shared/Video/VideoDecoder.h"
+#include "Core/Shared/Interfaces/IConsole.h"
 #include "Core/Shared/Interfaces/IRenderingDevice.h"
 #include "Core/Shared/Interfaces/IKeyManager.h"
 #include "Core/Shared/Interfaces/IMessageManager.h"
@@ -42,10 +45,12 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -64,6 +69,7 @@ JavaVM* s_vm = nullptr;
 jclass s_native_core = nullptr;
 jmethodID s_on_vm_paused_changed = nullptr;
 jmethodID s_saf_open = nullptr;
+jmethodID s_on_battery_saved = nullptr;
 
 /// The calling thread's JNIEnv, attaching it to the VM if it is not yet (core threads are not).
 JNIEnv* GetEnv()
@@ -97,6 +103,17 @@ void NotifyPaused(bool paused)
 	JNIEnv* env = GetEnv();
 	if(env) {
 		env->CallStaticVoidMethod(s_native_core, s_on_vm_paused_changed, static_cast<jboolean>(paused));
+		if(env->ExceptionCheck()) {
+			env->ExceptionClear();
+		}
+	}
+}
+
+void NotifyBatterySaved()
+{
+	JNIEnv* env = GetEnv();
+	if(env) {
+		env->CallStaticVoidMethod(s_native_core, s_on_battery_saved);
 		if(env->ExceptionCheck()) {
 			env->ExceptionClear();
 		}
@@ -986,6 +1003,208 @@ void RewindLoop()
 	}
 }
 
+// ---- Battery saves ----
+// The core hands its battery data (SRAM, the RTC) to s_battery_saver instead of writing files
+// (external/patches/battery-saver.patch). While a game runs, BatteryLoop takes it every second and
+// writes it once it has stopped changing, so a save the game makes is on disk within a few seconds
+// rather than only when the game stops. Every write goes to a temporary file that then replaces the
+// save, so a crash or a power cut leaves the old save or the new one, never half of one; and the
+// save as it was before a session first changed it is kept as <save>.bak1 (older ones as .bak2, .bak3).
+
+class BatterySaver final : public IBatterySaver
+{
+public:
+	void SaveBattery(const string& path, uint8_t* data, uint32_t length) override
+	{
+		std::lock_guard<std::mutex> lock(_mutex);
+		_data[path].assign(data, data + length);
+	}
+
+	/// What the core handed over since the last call, by path.
+	std::map<std::string, std::vector<uint8_t>> Take()
+	{
+		std::lock_guard<std::mutex> lock(_mutex);
+		return std::exchange(_data, {});
+	}
+
+private:
+	std::mutex _mutex;
+	std::map<std::string, std::vector<uint8_t>> _data;
+};
+
+using BatteryData = std::map<std::string, std::vector<uint8_t>>;
+
+shared_ptr<BatterySaver> s_battery_saver;
+/// Held across taking the data and writing it, so an older capture never lands after a newer one.
+std::mutex s_battery_mutex;
+/// What each save file holds now.
+BatteryData s_battery_written;
+/// The previous capture, to tell when the data has stopped changing.
+BatteryData s_battery_previous;
+/// When the data first differed from the files, or zero.
+Clock::time_point s_battery_dirty_since;
+/// The files this session has backed up already.
+std::set<std::string> s_battery_backed_up;
+
+constexpr int BatteryBackups = 3;
+/// Data that keeps changing (a game using its SRAM as work RAM) is written at least this often.
+constexpr auto BatteryMaxDelay = std::chrono::seconds(30);
+
+/// The battery data of the running game. The emulation thread must be held (AcquireLock) or stopped.
+BatteryData CaptureBattery()
+{
+	s_battery_saver->Take();
+	// The cartridge's; Emulator::SaveBattery() would add the Turbo File's, a peripheral the host has no use for.
+	shared_ptr<IConsole> console = s_emu->GetConsole();
+	if(console) {
+		console->SaveBattery();
+	}
+	return s_battery_saver->Take();
+}
+
+/// Writes [data] to [path] through [path].tmp, which replaces it only once it is complete and synced.
+bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& data)
+{
+	std::string temp = path + ".tmp";
+	int fd = open(temp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if(fd < 0) {
+		LOGE("Could not create %s", temp.c_str());
+		return false;
+	}
+	size_t done = 0;
+	while(done < data.size()) {
+		ssize_t n = write(fd, data.data() + done, data.size() - done);
+		if(n <= 0) {
+			break;
+		}
+		done += n;
+	}
+	bool ok = done == data.size() && fsync(fd) == 0;
+	ok = close(fd) == 0 && ok;
+	if(!ok || rename(temp.c_str(), path.c_str()) != 0) {
+		LOGE("Could not write %s", path.c_str());
+		unlink(temp.c_str());
+		return false;
+	}
+
+	// The rename itself is only durable once the folder is synced.
+	std::string dir = path.substr(0, path.find_last_of('/'));
+	int dirFd = open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if(dirFd >= 0) {
+		fsync(dirFd);
+		close(dirFd);
+	}
+	return true;
+}
+
+/// Moves the backups of [path] one generation back and copies the file in as the newest.
+void BackUpBatteryFile(const std::string& path)
+{
+	std::vector<uint8_t> current;
+	if(!ReadWholeFile(path, current)) {
+		return;
+	}
+	for(int i = BatteryBackups - 1; i >= 1; i--) {
+		rename((path + ".bak" + std::to_string(i)).c_str(), (path + ".bak" + std::to_string(i + 1)).c_str());
+	}
+	WriteFileAtomically(path + ".bak1", current);
+}
+
+/// Writes what in [data] differs from the files. True if it wrote anything. Holds s_battery_mutex.
+bool CommitBattery(const BatteryData& data)
+{
+	bool wrote = false;
+	for(auto& [path, bytes] : data) {
+		auto written = s_battery_written.find(path);
+		if(written != s_battery_written.end() && written->second == bytes) {
+			continue;
+		}
+		if(s_battery_backed_up.insert(path).second) {
+			BackUpBatteryFile(path);
+		}
+		if(WriteFileAtomically(path, bytes)) {
+			LOGI("Wrote %s", path.c_str());
+			s_battery_written[path] = bytes;
+			wrote = true;
+		}
+	}
+	s_battery_dirty_since = {};
+	if(wrote) {
+		NotifyBatterySaved();
+	}
+	return wrote;
+}
+
+bool BatteryDiffers(const BatteryData& data)
+{
+	for(auto& [path, bytes] : data) {
+		auto written = s_battery_written.find(path);
+		if(written == s_battery_written.end() || written->second != bytes) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/// After the game has loaded its save: the files as they are, and their data as the game has it.
+void StartBatterySession()
+{
+	std::lock_guard<std::mutex> lock(s_battery_mutex);
+	BatteryData data;
+	{
+		auto emuLock = s_emu->AcquireLock();
+		data = CaptureBattery();
+	}
+	s_battery_written.clear();
+	s_battery_backed_up.clear();
+	for(auto& [path, bytes] : data) {
+		// Without a file the game's untouched RAM counts as written, so a game that never saves
+		// leaves no file.
+		std::vector<uint8_t> file;
+		s_battery_written[path] = ReadWholeFile(path, file) ? file : bytes;
+	}
+	s_battery_previous = data;
+	s_battery_dirty_since = {};
+}
+
+void BatteryLoop()
+{
+	pthread_setname_np(pthread_self(), "BatterySave");
+	while(true) {
+		{
+			std::unique_lock<std::mutex> lock(s_run_mutex);
+			s_run_cv.wait_for(lock, std::chrono::seconds(1));
+		}
+		if(!s_active || s_paused) {
+			continue;
+		}
+
+		std::lock_guard<std::mutex> lock(s_battery_mutex);
+		BatteryData data;
+		{
+			auto emuLock = s_emu->AcquireLock();
+			if(!s_active) {
+				continue;
+			}
+			data = CaptureBattery();
+		}
+		auto now = Clock::now();
+		if(!BatteryDiffers(data)) {
+			s_battery_dirty_since = {};
+		} else {
+			if(s_battery_dirty_since == Clock::time_point()) {
+				s_battery_dirty_since = now;
+			}
+			// A game writes its save over several frames: wait until a second has gone by without
+			// a change, so the file never holds half of it.
+			if(data == s_battery_previous || now - s_battery_dirty_since >= BatteryMaxDelay) {
+				CommitBattery(data);
+			}
+		}
+		s_battery_previous = std::move(data);
+	}
+}
+
 // ---- Settings into the core ----
 
 void ApplySettings()
@@ -1096,7 +1315,10 @@ void StartEmulator()
 	KeyManager::RegisterKeyManager(&s_keys);
 	s_listener.reset(new HostNotificationListener());
 	s_emu->GetNotificationManager()->RegisterNotificationListener(s_listener);
+	s_battery_saver.reset(new BatterySaver());
+	s_emu->GetBatteryManager()->SetBatterySaver(s_battery_saver);
 	std::thread(RewindLoop).detach();
+	std::thread(BatteryLoop).detach();
 }
 
 void InstallCheats()
@@ -1139,6 +1361,7 @@ void SetJavaVM(JavaVM* vm, jclass native_core)
 	JNIEnv* env = GetEnv();
 	s_on_vm_paused_changed = env->GetStaticMethodID(native_core, "onVmPausedChanged", "(Z)V");
 	s_saf_open = env->GetStaticMethodID(native_core, "safOpen", "(Ljava/lang/String;)I");
+	s_on_battery_saved = env->GetStaticMethodID(native_core, "onBatterySaved", "()V");
 }
 
 std::string Initialize(const std::string& data_dir)
@@ -1199,6 +1422,8 @@ std::string RunSystem(const std::string& path, const std::string& save_state)
 		return "Could not start the game";
 	}
 	InstallCheats();
+	// Before the boot state, which brings its own SRAM: that is then written as a change.
+	StartBatterySession();
 
 	if(!save_state.empty() && !s_emu->GetSaveStateManager()->LoadState(save_state, false)) {
 		LOGW("Could not load the boot state %s", save_state.c_str());
@@ -1214,7 +1439,13 @@ std::string RunSystem(const std::string& path, const std::string& save_state)
 	}
 
 	s_active = false;
-	s_emu->Stop(true);
+	{
+		// Held across Stop(), which hands the battery data over one last time, so BatteryLoop is
+		// not taking it from the game at the same moment.
+		std::lock_guard<std::mutex> lock(s_battery_mutex);
+		s_emu->Stop(true);
+		CommitBattery(s_battery_saver->Take());
+	}
 	s_audio->Stop();
 	s_presenter.ClearFrame();
 	{
@@ -1234,6 +1465,24 @@ void RequestShutdown()
 	std::lock_guard<std::mutex> lock(s_run_mutex);
 	s_shutdown_requested = true;
 	s_run_cv.notify_all();
+}
+
+bool FlushBatterySave()
+{
+	std::lock_guard<std::mutex> lock(s_battery_mutex);
+	if(!s_active) {
+		return false;
+	}
+	BatteryData data;
+	{
+		auto emuLock = s_emu->AcquireLock();
+		if(!s_active) {
+			return false;
+		}
+		data = CaptureBattery();
+	}
+	s_battery_previous = data;
+	return CommitBattery(data);
 }
 
 void RequestPause(bool paused)

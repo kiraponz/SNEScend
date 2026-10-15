@@ -1,0 +1,66 @@
+SNEScend's change to MesenCE 2.2.1 (https://github.com/nesdev-org/MesenCE), made in
+October 2026 by Kira for SNEScend. Distributed under the GPL-3.0, as MesenCE is.
+
+BatteryManager hands the battery data (SRAM, RTC) to an IBatterySaver when one is set, instead of
+writing the file itself, so the Android host can write it safely (to a temporary file that then
+replaces the save) and while the game runs. emucore/src/main/cpp/CMakeLists.txt applies this patch
+to copies of the files at build time; the submodule itself stays unchanged.
+
+--- a/Core/Shared/BatteryManager.cpp
++++ b/Core/Shared/BatteryManager.cpp
+@@ -29,6 +29,11 @@
+ 	_recorder = recorder;
+ }
+ 
++void BatteryManager::SetBatterySaver(shared_ptr<IBatterySaver> saver)
++{
++	_saver = saver;
++}
++
+ void BatteryManager::SaveBattery(string extension, uint8_t* data, uint32_t length)
+ {
+ 	if(_romName.empty()) {
+@@ -37,6 +42,11 @@
+ 	}
+ 
+ 	_hasBattery = true;
++	shared_ptr<IBatterySaver> saver = _saver.lock();
++	if(saver) {
++		saver->SaveBattery(GetBasePath(extension), data, length);
++		return;
++	}
+ 	ofstream out(GetBasePath(extension), ios::binary);
+ 	if(out) {
+ 		out.write((char*)data, length);
+--- a/Core/Shared/BatteryManager.h
++++ b/Core/Shared/BatteryManager.h
+@@ -13,6 +13,13 @@
+ 	virtual void OnLoadBattery(string extension, vector<uint8_t> batteryData) = 0;
+ };
+ 
++//Takes the battery data the core would write to [path], and writes it itself
++class IBatterySaver
++{
++public:
++	virtual void SaveBattery(const string& path, uint8_t* data, uint32_t length) = 0;
++};
++
+ class BatteryManager
+ {
+ private:
+@@ -21,6 +28,7 @@
+ 
+ 	std::weak_ptr<IBatteryProvider> _provider;
+ 	std::weak_ptr<IBatteryRecorder> _recorder;
++	std::weak_ptr<IBatterySaver> _saver;
+ 
+ 	string GetBasePath(string& extension);
+ 
+@@ -31,6 +39,7 @@
+ 
+ 	void SetBatteryProvider(shared_ptr<IBatteryProvider> provider);
+ 	void SetBatteryRecorder(shared_ptr<IBatteryRecorder> recorder);
++	void SetBatterySaver(shared_ptr<IBatterySaver> saver);
+ 
+ 	void SaveBattery(string extension, uint8_t* data, uint32_t length);
+ 

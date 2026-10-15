@@ -34,6 +34,11 @@ bool HasActiveSystem();
 void RequestShutdown();
 void RequestPause(bool paused);
 
+/// Writes the running game's battery save now if it has changed (the core otherwise writes it
+/// once it has been unchanged for a second, and when the game stops). True if it wrote anything.
+/// Blocks.
+bool FlushBatterySave();
+
 /// Writes one value to the settings ("Section/Key"). Not applied to a running game until
 /// CommitSettings().
 void SetSetting(const std::string& section, const std::string& key, const std::string& value);

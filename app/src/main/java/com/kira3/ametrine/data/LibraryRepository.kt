@@ -156,9 +156,15 @@ class LibraryRepository(
 
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
-    /** Keeps read access to [treeUri] across restarts and makes it the game folder. */
+    /**
+     * Keeps access to [treeUri] across restarts and makes it the game folder. Write access too,
+     * for the battery saves kept in it ([SaveFolderSync.GAME_FOLDER_SUBFOLDER]).
+     */
     suspend fun setGameFolder(treeUri: Uri) {
-        contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        contentResolver.takePersistableUriPermission(
+            treeUri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+        )
         preferences.setGameFolder(treeUri)
     }
 

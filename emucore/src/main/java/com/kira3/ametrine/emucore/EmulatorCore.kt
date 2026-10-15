@@ -42,7 +42,11 @@ class EmulatorCore(context: Context) {
      */
     val biosDir: File = File(dataDir, "firmware")
 
-    /** Where the core keeps the games' battery saves (`<serial>.srm`). */
+    /**
+     * Where the core keeps the games' battery saves (`<serial>.srm`, and `<serial>.rtc` for a
+     * cartridge with a clock). It writes each through a `.tmp` file that then replaces it, and keeps
+     * the save as it was before each of the last sessions that changed it as `.bak1` to `.bak3`.
+     */
     val memoryCardsDir: File = File(dataDir, "saves")
 
     /** The save states (`<serial>_<slot>.mss`) and the suspend states (`<serial>_resume.mss`). */
@@ -64,6 +68,10 @@ class EmulatorCore(context: Context) {
      */
     @Volatile
     var rumbleHandler: ((pad: Int, largeMotor: Int, smallMotor: Int) -> Unit)? = null
+
+    /** Called on a core thread each time the core has written the running game's battery save. */
+    @Volatile
+    var batterySavedHandler: (() -> Unit)? = null
 
     /** Opens the games for the core, which only takes paths. */
     private val files = SafFiles(appContext.contentResolver)
@@ -93,6 +101,10 @@ class EmulatorCore(context: Context) {
 
                 override fun onPadRumble(pad: Int, largeMotor: Int, smallMotor: Int) {
                     rumbleHandler?.invoke(pad, largeMotor, smallMotor)
+                }
+
+                override fun onBatterySaved() {
+                    batterySavedHandler?.invoke()
                 }
             }
             NativeCore.initialize(dataDir.absolutePath)?.let { error ->
@@ -275,6 +287,9 @@ class EmulatorCore(context: Context) {
     fun shutdown() = NativeCore.shutdown()
 
     val hasActiveVm: Boolean get() = NativeCore.hasActiveSystem()
+
+    /** Writes the running game's battery save now if it has changed. Blocks. */
+    fun flushBatterySave(): Boolean = NativeCore.flushBatterySave()
 
     /**
      * From the activity's onStop (true) and onStart (false). Nothing to do for this core: the

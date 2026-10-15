@@ -12,6 +12,11 @@ import com.kira3.ametrine.data.LibraryRepository
 import com.kira3.ametrine.data.MemoryCard
 import com.kira3.ametrine.data.MemoryCardRepository
 import com.kira3.ametrine.data.MemoryCardResult
+import com.kira3.ametrine.data.SaveBackup
+import com.kira3.ametrine.data.SaveFolderSync
+import com.kira3.ametrine.data.SaveLocation
+import com.kira3.ametrine.data.SaveLocationState
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,7 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** What to tell the user once, after an action. */
-enum class MemoryCardMessage { Imported, Exported, Deleted, Invalid, Failed, Busy }
+enum class MemoryCardMessage { Imported, Exported, Deleted, Restored, Invalid, Failed, Busy, NotGameFolder }
 
 /** A game of the library a save can go to. */
 data class SaveGame(val serial: String, val title: String)
@@ -37,13 +42,15 @@ data class MemoryCardsUiState(
     val saves: List<SaveEntry>? = null,
     /** The library's games, by title, for an imported save to go to. */
     val games: List<SaveGame> = emptyList(),
+    /** Null while it is being read. */
+    val location: SaveLocationState? = null,
     val busy: Boolean = false,
     val message: MemoryCardMessage? = null,
 )
 
 class MemoryCardsViewModel(
     private val repository: MemoryCardRepository,
-    libraryRepository: LibraryRepository,
+    private val libraryRepository: LibraryRepository,
 ) : ViewModel() {
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<MemoryCardMessage?>(null)
@@ -56,20 +63,22 @@ class MemoryCardsViewModel(
             emit(emptyList())
         },
         games,
+        repository.location.catch { Log.e(TAG, "Reading the save location failed", it) },
         busy,
         message,
-    ) { cards, games, busy, message ->
+    ) { cards, games, location, busy, message ->
         val titles = games.mapNotNull { game -> game.dataSerial?.let { it to game.title } }.toMap()
         MemoryCardsUiState(
             saves = cards.map { SaveEntry(it, titles[it.serial]) },
             games = titles.map { (serial, title) -> SaveGame(serial, title) }.sortedBy { it.title.lowercase() },
+            location = location,
             busy = busy,
             message = message,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryCardsUiState())
 
     /** Makes the file at [uri] the battery save of the game with [serial]. */
-    fun import(uri: Uri, serial: String) = run(MemoryCardMessage.Imported) { repository.import(uri, serial) }
+    fun import(uri: Uri, serial: String) = run(MemoryCardMessage.Imported) { repository.import(uri, serial, saveNames()[serial]) }
 
     fun export(card: MemoryCard, uri: Uri) = run(MemoryCardMessage.Exported) {
         if (repository.export(card, uri)) MemoryCardResult.Ok else MemoryCardResult.Failed
@@ -77,11 +86,46 @@ class MemoryCardsViewModel(
 
     fun delete(card: MemoryCard) = run(MemoryCardMessage.Deleted) { repository.delete(card) }
 
+    suspend fun backups(card: MemoryCard): List<SaveBackup> = repository.backups(card)
+
+    fun restore(card: MemoryCard, backup: SaveBackup) = run(MemoryCardMessage.Restored) { repository.restore(card, backup, saveNames()[card.serial]) }
+
+    /** Keeps the copies of the saves in the game folder, or in the folder at [folder] when it is given. */
+    fun setLocation(mode: SaveLocation.Mode, folder: Uri? = null) = run(null) {
+        repository.setLocation(mode, folder, saveNames())
+        MemoryCardResult.Ok
+    }
+
+    /** The game folder, for the folder picker to open at. */
+    suspend fun gameFolder(): Uri? = libraryRepository.gameFolder.first()
+
+    /** The user picked [tree] to let the app write to the game folder. */
+    fun allowGameFolder(tree: Uri) {
+        viewModelScope.launch {
+            if (tree != libraryRepository.gameFolder.first()) {
+                message.value = MemoryCardMessage.NotGameFolder
+                return@launch
+            }
+            run(null) {
+                repository.allowGameFolder(tree, saveNames())
+                MemoryCardResult.Ok
+            }
+        }
+    }
+
+    /** The names of the copies of the saves in the save folder, by serial: the games' file names. */
+    private suspend fun saveNames(): Map<String, String> = runCatching {
+        libraryRepository.games.first().mapNotNull { game ->
+            val serial = game.dataSerial ?: return@mapNotNull null
+            SaveFolderSync.nameOf(game.fileName)?.let { serial to it }
+        }.toMap()
+    }.getOrDefault(emptyMap())
+
     fun exportName(entry: SaveEntry): String = repository.exportName(entry.card, entry.title)
 
     fun onMessageShown() = message.update { null }
 
-    private fun run(success: MemoryCardMessage, action: suspend () -> MemoryCardResult) {
+    private fun run(success: MemoryCardMessage?, action: suspend () -> MemoryCardResult) {
         viewModelScope.launch {
             busy.value = true
             val result = withContext(NonCancellable) {

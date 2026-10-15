@@ -40,6 +40,7 @@ internal object NativeCore {
     interface Listener {
         fun onVmPausedChanged(paused: Boolean)
         fun onPadRumble(pad: Int, largeMotor: Int, smallMotor: Int)
+        fun onBatterySaved()
     }
 
     // ---- Setup ----
@@ -100,7 +101,13 @@ internal object NativeCore {
     /** Loads the state at [path] into the running game. Blocks. Null when it did, or why not. */
     @JvmStatic fun loadState(path: String): String? = nativeLoadState(path)
 
-    /** The battery save is written when the game stops, so nothing ever holds a save state back. */
+    /**
+     * Writes the running game's battery save now if it has changed; the core otherwise writes it
+     * a second after the game last changed it, and when the game stops. Blocks.
+     */
+    @JvmStatic fun flushBatterySave(): Boolean = nativeFlushBatterySave()
+
+    /** The battery save is written apart from the states, so nothing ever holds a save state back. */
     @JvmStatic fun isSavingMemoryCards(): Boolean = false
 
     /**
@@ -179,6 +186,7 @@ internal object NativeCore {
     @JvmStatic private external fun nativeHasActiveSystem(): Boolean
     @JvmStatic private external fun nativePause(paused: Boolean)
     @JvmStatic private external fun nativeShutdown()
+    @JvmStatic private external fun nativeFlushBatterySave(): Boolean
     @JvmStatic private external fun nativeSetPadBind(port: Int, index: Int, value: Float)
     @JvmStatic private external fun nativeSetFastForward(enabled: Boolean)
     @JvmStatic private external fun nativeSaveState(path: String): String?
@@ -202,6 +210,13 @@ internal object NativeCore {
     fun onVmPausedChanged(paused: Boolean) {
         runCatching { listener?.onVmPausedChanged(paused) }
             .onFailure { Log.e(TAG, "onVmPausedChanged", it) }
+    }
+
+    /** The core has written a battery save file of the running game. */
+    @JvmStatic
+    fun onBatterySaved() {
+        runCatching { listener?.onBatterySaved() }
+            .onFailure { Log.e(TAG, "onBatterySaved", it) }
     }
 
     @JvmStatic

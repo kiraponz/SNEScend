@@ -95,6 +95,11 @@ extern "C" JNIEXPORT void JNICALL NATIVE_CORE(nativeShutdown)(JNIEnv*, jclass)
 	AndroidHost::RequestShutdown();
 }
 
+extern "C" JNIEXPORT jboolean JNICALL NATIVE_CORE(nativeFlushBatterySave)(JNIEnv*, jclass)
+{
+	return AndroidHost::FlushBatterySave();
+}
+
 extern "C" JNIEXPORT void JNICALL NATIVE_CORE(nativeSetSurface)(JNIEnv* env, jclass, jobject surface, jint width, jint height)
 {
 	ANativeWindow* window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;

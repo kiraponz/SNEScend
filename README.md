@@ -14,8 +14,10 @@ A Super Nintendo (SNES / Super Famicom) emulator for Android, built on the SNES 
 - Global settings with per-game overrides: aspect ratio, sharp or integer scaling, NTSC and
   smoothing filters, scanlines, run-ahead, overclocking
 - Touch controls you can rearrange and resize, and physical controllers
-- Save states, rewind, fast forward, battery saves you can import and export, Game Genie and
-  Pro Action Replay cheats, memory search
+- Battery saves written a second after the game saves, safely (a crash leaves the old save or
+  the new one), with the last three versions kept; a copy goes to `snes_savedata` in the game
+  folder or to a folder you pick, named after the game, for other emulators
+- Save states, rewind, fast forward, Game Genie and Pro Action Replay cheats, memory search
 - Backup and restore of settings and saves
 - Optional: ask Google Gemini about the current screen
 

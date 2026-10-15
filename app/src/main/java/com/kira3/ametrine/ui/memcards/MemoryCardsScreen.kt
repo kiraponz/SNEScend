@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,16 +57,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kira3.ametrine.R
 import com.kira3.ametrine.data.MemoryCard
+import com.kira3.ametrine.data.SaveBackup
+import com.kira3.ametrine.data.SaveLocation
+import com.kira3.ametrine.data.SaveLocationState
 import com.kira3.ametrine.ui.settings.BackButton
 import com.kira3.ametrine.ui.settings.listPadding
 import com.kira3.ametrine.ui.settings.segmentedShapes
 import com.kira3.ametrine.ui.settings.settingsListColors
 import com.kira3.ametrine.ui.settings.settingsTopBarColors
+import kotlinx.coroutines.launch
 import java.util.Date
 
 /**
- * The games' battery saves: copy one out to a file, put a file in as a game's save (from another
- * emulator, say), or delete one. A game writes its save when it stops.
+ * The games' battery saves: where their copies go (the game folder or another folder), and for
+ * each save: copy it out to a file, put a file in as a game's save (from another emulator, say),
+ * go back to an earlier version, or delete it.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -76,6 +82,8 @@ fun MemoryCardsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<SaveEntry?>(null) }
     var exporting by remember { mutableStateOf<SaveEntry?>(null) }
+    var restoring by remember { mutableStateOf<SaveEntry?>(null) }
+    val scope = rememberCoroutineScope()
     /** The game a picked file goes to; the file picker opens once one is chosen. */
     var importTarget by remember { mutableStateOf<String?>(null) }
     var choosingGame by remember { mutableStateOf(false) }
@@ -94,6 +102,12 @@ fun MemoryCardsScreen(
         exporting = null
         if (uri != null && entry != null) viewModel.export(entry.card, uri)
     }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let { viewModel.setLocation(SaveLocation.Mode.Folder, it) }
+    }
+    val allowGameFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let(viewModel::allowGameFolder)
+    }
     fun importInto(serial: String) {
         importTarget = serial
         pickSave.launch(arrayOf("*/*"))
@@ -103,6 +117,8 @@ fun MemoryCardsScreen(
         MemoryCardMessage.Imported to stringResource(R.string.memcards_imported),
         MemoryCardMessage.Exported to stringResource(R.string.memcards_exported),
         MemoryCardMessage.Deleted to stringResource(R.string.memcards_deleted),
+        MemoryCardMessage.Restored to stringResource(R.string.memcards_restored),
+        MemoryCardMessage.NotGameFolder to stringResource(R.string.memcards_not_game_folder),
         MemoryCardMessage.Invalid to stringResource(R.string.memcards_invalid),
         MemoryCardMessage.Failed to stringResource(R.string.memcards_failed),
         MemoryCardMessage.Busy to stringResource(R.string.memcards_busy),
@@ -142,6 +158,32 @@ fun MemoryCardsScreen(
             contentPadding = listPadding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
+            state.location?.let { location ->
+                item(key = "location_title") { SectionTitle(stringResource(R.string.memcards_location_title)) }
+                item(key = "location") {
+                    LocationRows(
+                        location = location,
+                        enabled = !state.busy,
+                        onGameFolder = {
+                            if (location.location.mode != SaveLocation.Mode.GameFolder) {
+                                viewModel.setLocation(SaveLocation.Mode.GameFolder)
+                            } else if (!location.writable && location.hasGameFolder) {
+                                scope.launch { allowGameFolder.launch(viewModel.gameFolder()) }
+                            }
+                        },
+                        onFolder = {
+                            val folder = location.location.folder
+                            if (folder != null && location.location.mode != SaveLocation.Mode.Folder) {
+                                viewModel.setLocation(SaveLocation.Mode.Folder, folder)
+                            } else {
+                                pickFolder.launch(folder)
+                            }
+                        },
+                        onChangeFolder = { pickFolder.launch(location.location.folder) },
+                    )
+                }
+                item(key = "saves_title") { SectionTitle(stringResource(R.string.memcards_saves_title)) }
+            }
             if (saves.isEmpty()) {
                 item(key = "empty") {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -167,6 +209,7 @@ fun MemoryCardsScreen(
                                 saveFile.launch(viewModel.exportName(entry))
                             },
                             onReplace = { importInto(entry.card.serial) },
+                            onRestore = { restoring = entry },
                             onDelete = { deleting = entry },
                         )
                     },
@@ -197,6 +240,19 @@ fun MemoryCardsScreen(
             onDismiss = { choosingGame = false },
         )
     }
+    restoring?.let { entry ->
+        var backups by remember(entry) { mutableStateOf<List<SaveBackup>?>(null) }
+        LaunchedEffect(entry) { backups = viewModel.backups(entry.card) }
+        RestoreDialog(
+            title = entry.title ?: entry.card.serial,
+            backups = backups,
+            onPick = {
+                restoring = null
+                viewModel.restore(entry.card, it)
+            },
+            onDismiss = { restoring = null },
+        )
+    }
     deleting?.let { entry ->
         AlertDialog(
             onDismissRequest = { deleting = null },
@@ -216,7 +272,13 @@ fun MemoryCardsScreen(
 }
 
 @Composable
-private fun SaveMenu(enabled: Boolean, onExport: () -> Unit, onReplace: () -> Unit, onDelete: () -> Unit) {
+private fun SaveMenu(
+    enabled: Boolean,
+    onExport: () -> Unit,
+    onReplace: () -> Unit,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, enabled = enabled) {
@@ -230,6 +292,10 @@ private fun SaveMenu(enabled: Boolean, onExport: () -> Unit, onReplace: () -> Un
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.memcards_replace)) },
                 onClick = { open = false; onReplace() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.memcards_restore)) },
+                onClick = { open = false; onRestore() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.memcards_delete)) },
@@ -263,6 +329,115 @@ private fun GameDialog(games: List<SaveGame>, onPick: (SaveGame) -> Unit, onDism
                             game.title,
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.fillMaxWidth().clickable { onPick(game) }.padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_cancel)) } },
+    )
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+    )
+}
+
+/** The two places the copies of the saves can go, the chosen one marked. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun LocationRows(
+    location: SaveLocationState,
+    enabled: Boolean,
+    onGameFolder: () -> Unit,
+    onFolder: () -> Unit,
+    onChangeFolder: () -> Unit,
+) {
+    val mode = location.location.mode
+    val folderName = location.folderName
+    Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        SegmentedListItem(
+            onClick = onGameFolder,
+            enabled = enabled,
+            shapes = segmentedShapes(0, 2),
+            colors = settingsListColors(),
+            leadingContent = { RadioButton(selected = mode == SaveLocation.Mode.GameFolder, onClick = null) },
+            supportingContent = {
+                Text(
+                    when {
+                        mode != SaveLocation.Mode.GameFolder || location.writable ->
+                            stringResource(R.string.memcards_location_game_folder_summary)
+                        !location.hasGameFolder -> stringResource(R.string.memcards_location_no_game_folder)
+                        else -> stringResource(R.string.memcards_location_game_folder_denied)
+                    },
+                    color = if (mode == SaveLocation.Mode.GameFolder && !location.writable) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            },
+        ) { Text(stringResource(R.string.memcards_location_game_folder)) }
+        SegmentedListItem(
+            onClick = onFolder,
+            enabled = enabled,
+            shapes = segmentedShapes(1, 2),
+            colors = settingsListColors(),
+            leadingContent = { RadioButton(selected = mode == SaveLocation.Mode.Folder, onClick = null) },
+            trailingContent = if (folderName != null) {
+                { TextButton(onClick = onChangeFolder, enabled = enabled) { Text(stringResource(R.string.memcards_location_change)) } }
+            } else {
+                null
+            },
+            supportingContent = {
+                Text(
+                    when {
+                        folderName == null -> stringResource(R.string.memcards_location_folder_none)
+                        mode == SaveLocation.Mode.Folder && !location.writable ->
+                            stringResource(R.string.memcards_location_folder_denied, folderName)
+                        else -> folderName
+                    },
+                    color = if (mode == SaveLocation.Mode.Folder && !location.writable) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            },
+        ) { Text(stringResource(R.string.memcards_location_folder)) }
+    }
+}
+
+/** Picks the earlier version of a save to go back to. */
+@Composable
+private fun RestoreDialog(title: String, backups: List<SaveBackup>?, onPick: (SaveBackup) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.memcards_restore_title, title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.memcards_restore_text))
+                when {
+                    backups == null -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
+                    backups.isEmpty() -> Text(
+                        stringResource(R.string.memcards_restore_none),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                    else -> backups.forEach { backup ->
+                        val date = DateFormat.getMediumDateFormat(context).format(Date(backup.modified))
+                        val time = DateFormat.getTimeFormat(context).format(Date(backup.modified))
+                        Text(
+                            "$date $time · ${Formatter.formatShortFileSize(context, backup.bytes)}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth().clickable { onPick(backup) }.padding(top = 16.dp, bottom = 8.dp),
                         )
                     }
                 }

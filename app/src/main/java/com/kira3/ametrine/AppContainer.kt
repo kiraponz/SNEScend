@@ -14,6 +14,7 @@ import com.kira3.ametrine.data.GeminiKeyStore
 import com.kira3.ametrine.data.LibraryRepository
 import com.kira3.ametrine.data.MemoRepository
 import com.kira3.ametrine.data.MemoryCardRepository
+import com.kira3.ametrine.data.SaveFolderSync
 import com.kira3.ametrine.data.SettingsRepository
 import com.kira3.ametrine.data.db.LibraryDatabase
 import com.kira3.ametrine.emucore.EmulatorCore
@@ -33,7 +34,10 @@ class AppContainer(context: Context) {
         LibraryRepository(appContext, emulatorCore, appPreferences, libraryDatabase.gameDao(), gameRecordRepository)
     }
     val gameRecordRepository: GameRecordRepository by lazy { GameRecordRepository(appContext) }
-    val memoryCardRepository: MemoryCardRepository by lazy { MemoryCardRepository(appContext, emulatorCore) }
+    val saveFolderSync: SaveFolderSync by lazy { SaveFolderSync(appContext, emulatorCore, appPreferences) }
+    val memoryCardRepository: MemoryCardRepository by lazy {
+        MemoryCardRepository(appContext, emulatorCore, appPreferences, saveFolderSync)
+    }
     val cheatRepository: CheatRepository by lazy { CheatRepository(appContext) }
     val macroRepository: MacroRepository by lazy { MacroRepository(appContext) }
     val padLayoutRepository: PadLayoutRepository by lazy { PadLayoutRepository(appContext) }
