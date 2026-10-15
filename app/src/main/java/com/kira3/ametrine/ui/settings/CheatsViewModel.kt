@@ -60,16 +60,6 @@ class CheatsViewModel(
         }
     }
 
-    /** Adds the cheat database's cheats for the game, all off. */
-    fun importFromDatabase() {
-        viewModelScope.launch {
-            val found = runCatching { core.databaseCheats(serial) { UUID.randomUUID().toString() } }
-                .onFailure { Log.w(TAG, "Could not read the cheat database", it) }
-                .getOrDefault(emptyList())
-            add(found)
-        }
-    }
-
     /** Adds [found], leaving out cheats already in the list with the same name and code. */
     private suspend fun add(found: List<Cheat>) {
         var added = 0

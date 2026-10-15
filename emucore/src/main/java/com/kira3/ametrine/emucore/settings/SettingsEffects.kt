@@ -4,12 +4,8 @@ package com.kira3.ametrine.emucore.settings
 object SettingsEffects {
     /** Dotted paths of the settings that only take effect when a game next boots. */
     val appliesOnNextBoot: Set<String> = setOf(
-        "gpu.renderer",
         "console.region",
-        "console.enable8MbRam",
-        "console.fastBoot",
-        "console.loadImageToRam",
-        "system.biosFilename",
+        "console.ramPowerOnState",
         "output.customDriverId",
         "output.turnipUbwcHint",
     )

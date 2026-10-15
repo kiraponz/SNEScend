@@ -126,16 +126,12 @@ private fun padControlLabel(id: String): String = stringResource(
         "extra.screenshot" -> R.string.menu_screenshot
         "extra.macro" -> R.string.macro_title
         "extra.ai" -> R.string.ai_button
-        "btn.Triangle" -> R.string.pad_edit_triangle
-        "btn.Circle" -> R.string.pad_edit_circle
-        "btn.Cross" -> R.string.pad_edit_cross
-        "btn.Square" -> R.string.pad_edit_square
-        "btn.L1" -> R.string.pad_l1
-        "btn.L2" -> R.string.pad_l2
-        "btn.R1" -> R.string.pad_r1
-        "btn.R2" -> R.string.pad_r2
-        "btn.L3" -> R.string.pad_l3
-        "btn.R3" -> R.string.pad_r3
+        "btn.A" -> R.string.settings_button_a
+        "btn.B" -> R.string.settings_button_b
+        "btn.X" -> R.string.settings_button_x
+        "btn.Y" -> R.string.settings_button_y
+        "btn.L" -> R.string.pad_l
+        "btn.R" -> R.string.pad_r
         "btn.Select" -> R.string.pad_select
         "btn.Start" -> R.string.pad_start
         else -> R.string.pad_edit_title

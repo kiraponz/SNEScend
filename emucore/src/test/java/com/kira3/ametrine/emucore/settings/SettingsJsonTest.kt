@@ -8,8 +8,8 @@ class SettingsJsonTest {
     @Test
     fun roundTrips() {
         val settings = EmulatorSettings(
-            cpu = CpuSettings(overclockPercent = 200, recompilerICache = true),
-            gpu = GpuSettings(renderer = "vulkan", resolutionScale = 3),
+            console = ConsoleSettings(region = "PAL", overclockScanlines = 120),
+            display = DisplaySettings(scaling = "Nearest", scanlines = 30),
         )
         assertEquals(settings, SettingsJson.decode(SettingsJson.parse(SettingsJson.format(SettingsJson.encode(settings)))))
     }
@@ -17,13 +17,13 @@ class SettingsJsonTest {
     @Test
     fun badValuesFallBackToDefaults() {
         val stored = SettingsJson.parse(
-            """{"gpu": {"resolutionScale": 1.5, "pgxpEnable": "no", "multisamples": 4}, "cpu": {"executionMode": 3}, "gone": {"x": 1}}""",
+            """{"display": {"scanlines": 1.5, "filter": 3, "overscanTop": 4}, "audio": {"muted": "no"}, "gone": {"x": 1}}""",
         )
         val settings = SettingsJson.decode(stored)
-        assertEquals(1, settings.gpu.resolutionScale)
-        assertEquals(false, settings.gpu.pgxpEnable)
-        assertEquals(4, settings.gpu.multisamples)
-        assertEquals("Recompiler", settings.cpu.executionMode)
+        assertEquals(0, settings.display.scanlines)
+        assertEquals("None", settings.display.filter)
+        assertEquals(4, settings.display.overscanTop)
+        assertEquals(false, settings.audio.muted)
     }
 
     @Test
@@ -34,63 +34,52 @@ class SettingsJsonTest {
     @Test
     fun overridesRecordEveryEditedValue() {
         val global = EmulatorSettings()
-        val edited = global.copy(gpu = global.gpu.copy(pgxpEnable = true))
+        val edited = global.copy(audio = global.audio.copy(muted = true))
         val overrides = SettingsOverrides().record(global, edited)
-        assertEquals(setOf("gpu.pgxpEnable"), overrides.paths)
+        assertEquals(setOf("audio.muted"), overrides.paths)
         assertEquals(edited, SettingsJson.merge(global, overrides))
 
         // An override equal to the global value stays: the player chose it for this game.
         val back = overrides.record(edited, global)
-        assertEquals(setOf("gpu.pgxpEnable"), back.paths)
+        assertEquals(setOf("audio.muted"), back.paths)
 
         // A later global change reaches only the values the game does not override.
-        val newGlobal = global.copy(gpu = global.gpu.copy(pgxpEnable = true, resolutionScale = 4))
+        val newGlobal = global.copy(audio = global.audio.copy(muted = true, volume = 40))
         val merged = SettingsJson.merge(newGlobal, back)
-        assertEquals(false, merged.gpu.pgxpEnable)
-        assertEquals(4, merged.gpu.resolutionScale)
+        assertEquals(false, merged.audio.muted)
+        assertEquals(40, merged.audio.volume)
 
-        assertTrue(back.without(listOf("gpu.pgxpEnable")).isEmpty())
+        assertTrue(back.without(listOf("audio.muted")).isEmpty())
     }
 
     @Test
     fun keysCarryTheirFields() {
         val keys = CoreKeys.of(EmulatorSettings()).associateBy { it.id }
-        assertEquals(setOf("gpu.renderer"), keys.getValue("GPU/Renderer").fields)
-        assertEquals("Automatic", keys.getValue("GPU/Renderer").value)
-        assertEquals("Auto (Game Native)", keys.getValue("Display/AspectRatio").value)
-        assertEquals("1.0", keys.getValue("Main/EmulationSpeed").value)
-        assertEquals("PerGameTitle", keys.getValue("MemoryCards/Card1Type").value)
+        assertEquals(setOf("console.region"), keys.getValue("Snes/Region").fields)
+        assertEquals("Auto", keys.getValue("Snes/Region").value)
+        assertEquals("Sharp", keys.getValue("Video/Scaling").value)
+        assertEquals("100", keys.getValue("Emulation/SpeedPercent").value)
         // No key is written twice, and none clashes with a pinned one.
         assertEquals(keys.size, CoreKeys.of(EmulatorSettings()).size)
         assertTrue(CoreKeys.pinned.none { it.id in keys })
     }
 
     @Test
-    fun speedAndOverclockAreComputed() {
+    fun speedsAreComputed() {
         val keys = CoreKeys.of(
-            EmulatorSettings(
-                frameLimit = FrameLimitSettings(frameLimitEnable = false),
-                cpu = CpuSettings(overclockPercent = 150),
-            ),
+            EmulatorSettings(frameLimit = FrameLimitSettings(frameLimitEnable = false, fastForwardSpeed = 3)),
         ).associateBy { it.id }
-        assertEquals("0.0", keys.getValue("Main/EmulationSpeed").value)
-        assertEquals("true", keys.getValue("CPU/OverclockEnable").value)
-        assertEquals("150", keys.getValue("CPU/OverclockNumerator").value)
-    }
-
-    @Test
-    fun gameBiosGoesToEveryRegion() {
-        val keys = CoreKeys.of(EmulatorSettings(system = SystemSettings(biosFilename = "scph7000.bin"))).associateBy { it.id }
-        for (key in listOf("BIOS/PathNTSCJ", "BIOS/PathNTSCU", "BIOS/PathPAL")) assertEquals("scph7000.bin", keys.getValue(key).value)
+        assertEquals("0", keys.getValue("Emulation/SpeedPercent").value)
+        assertEquals("300", keys.getValue("Emulation/FastForwardPercent").value)
     }
 
     @Test
     fun copyPathsKeepsOnlyThosePaths() {
-        val boot = EmulatorSettings(gpu = GpuSettings(renderer = "opengl"))
-        val now = EmulatorSettings(gpu = GpuSettings(renderer = "vulkan", resolutionScale = 2))
+        val boot = EmulatorSettings(console = ConsoleSettings(region = "NTSC"))
+        val now = EmulatorSettings(console = ConsoleSettings(region = "PAL", overclockScanlines = 100))
         val held = SettingsJson.copyPaths(now, boot, SettingsEffects.appliesOnNextBoot)
-        assertEquals("opengl", held.gpu.renderer)
-        assertEquals(2, held.gpu.resolutionScale)
+        assertEquals("NTSC", held.console.region)
+        assertEquals(100, held.console.overclockScanlines)
     }
 
     @Test

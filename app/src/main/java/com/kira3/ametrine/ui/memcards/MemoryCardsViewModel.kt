@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.kira3.ametrine.AmetrineApplication
+import com.kira3.ametrine.data.LibraryRepository
 import com.kira3.ametrine.data.MemoryCard
 import com.kira3.ametrine.data.MemoryCardRepository
 import com.kira3.ametrine.data.MemoryCardResult
@@ -23,49 +24,60 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** What to tell the user once, after an action. */
-enum class MemoryCardMessage {
-    Created, Imported, Exported, Renamed, Deleted, Formatted, Exists, Invalid, Failed, Full, Busy,
-    SavesCopied, SavesMoved, SavesDeleted,
-}
+enum class MemoryCardMessage { Imported, Exported, Deleted, Invalid, Failed, Busy }
+
+/** A game of the library a save can go to. */
+data class SaveGame(val serial: String, val title: String)
+
+/** A battery save, with the name of its game when the library has it. */
+data class SaveEntry(val card: MemoryCard, val title: String?)
 
 data class MemoryCardsUiState(
-    /** Null while the card folder is being read. */
-    val cards: List<MemoryCard>? = null,
+    /** Null while the save folder is being read. */
+    val saves: List<SaveEntry>? = null,
+    /** The library's games, by title, for an imported save to go to. */
+    val games: List<SaveGame> = emptyList(),
     val busy: Boolean = false,
     val message: MemoryCardMessage? = null,
 )
 
-class MemoryCardsViewModel(private val repository: MemoryCardRepository) : ViewModel() {
+class MemoryCardsViewModel(
+    private val repository: MemoryCardRepository,
+    libraryRepository: LibraryRepository,
+) : ViewModel() {
     private val busy = MutableStateFlow(false)
     private val message = MutableStateFlow<MemoryCardMessage?>(null)
 
+    private val games = libraryRepository.games.catch { emit(emptyList()) }
+
     val uiState: StateFlow<MemoryCardsUiState> = combine(
         repository.cards.catch {
-            Log.e(TAG, "Listing memory cards failed", it)
+            Log.e(TAG, "Listing battery saves failed", it)
             emit(emptyList())
         },
+        games,
         busy,
         message,
-    ) { cards, busy, message -> MemoryCardsUiState(cards, busy, message) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryCardsUiState())
+    ) { cards, games, busy, message ->
+        val titles = games.mapNotNull { game -> game.dataSerial?.let { it to game.title } }.toMap()
+        MemoryCardsUiState(
+            saves = cards.map { SaveEntry(it, titles[it.serial]) },
+            games = titles.map { (serial, title) -> SaveGame(serial, title) }.sortedBy { it.title.lowercase() },
+            busy = busy,
+            message = message,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryCardsUiState())
 
-    fun create(name: String) =
-        run(MemoryCardMessage.Created) { repository.create(name) }
-
-    fun import(uri: Uri) = run(MemoryCardMessage.Imported) { repository.import(uri) }
+    /** Makes the file at [uri] the battery save of the game with [serial]. */
+    fun import(uri: Uri, serial: String) = run(MemoryCardMessage.Imported) { repository.import(uri, serial) }
 
     fun export(card: MemoryCard, uri: Uri) = run(MemoryCardMessage.Exported) {
         if (repository.export(card, uri)) MemoryCardResult.Ok else MemoryCardResult.Failed
     }
 
-    fun rename(card: MemoryCard, newName: String) =
-        run(MemoryCardMessage.Renamed) { repository.rename(card, newName) }
-
-    fun format(card: MemoryCard) = run(MemoryCardMessage.Formatted) { repository.format(card) }
-
     fun delete(card: MemoryCard) = run(MemoryCardMessage.Deleted) { repository.delete(card) }
 
-    fun exportName(card: MemoryCard): String = repository.exportName(card)
+    fun exportName(entry: SaveEntry): String = repository.exportName(entry.card, entry.title)
 
     fun onMessageShown() = message.update { null }
 
@@ -74,17 +86,15 @@ class MemoryCardsViewModel(private val repository: MemoryCardRepository) : ViewM
             busy.value = true
             val result = withContext(NonCancellable) {
                 runCatching { action() }
-                    .onFailure { Log.e(TAG, "Memory card action failed", it) }
+                    .onFailure { Log.e(TAG, "Battery save action failed", it) }
                     .getOrDefault(MemoryCardResult.Failed)
             }
             busy.value = false
             message.value = when (result) {
                 MemoryCardResult.Ok -> success
-                MemoryCardResult.Exists -> MemoryCardMessage.Exists
                 MemoryCardResult.Invalid -> MemoryCardMessage.Invalid
-                MemoryCardResult.Failed -> MemoryCardMessage.Failed
-                MemoryCardResult.Full -> MemoryCardMessage.Full
                 MemoryCardResult.Busy -> MemoryCardMessage.Busy
+                else -> MemoryCardMessage.Failed
             }
         }
     }
@@ -95,7 +105,7 @@ class MemoryCardsViewModel(private val repository: MemoryCardRepository) : ViewM
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val container = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as AmetrineApplication).container
-                MemoryCardsViewModel(container.memoryCardRepository)
+                MemoryCardsViewModel(container.memoryCardRepository, container.libraryRepository)
             }
         }
     }

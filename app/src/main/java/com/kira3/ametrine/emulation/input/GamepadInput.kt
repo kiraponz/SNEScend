@@ -5,9 +5,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import com.kira3.ametrine.emucore.EmulatorCore
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 import com.kira3.ametrine.emucore.settings.ControlsSettings
-import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 
@@ -15,9 +13,9 @@ import kotlin.math.max
  * Turns a physical controller's key and motion events into presses on the emulated pad.
  * Call from the activity's dispatchKeyEvent / dispatchGenericMotionEvent, on the UI thread.
  *
- * A pad can report the same control twice (the D-pad as keys and as a HAT axis, L2/R2 as
- * keys and as trigger axes), so each source is tracked separately and merged; the core
- * only hears about changes.
+ * A pad can report the same control twice (the D-pad as keys, as a HAT axis and as the left
+ * stick; L and R as shoulder keys, trigger keys and trigger axes), so each source is tracked
+ * separately and merged; the core only hears about changes.
  */
 class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
     /** Called when someone deliberately uses a controller (not just resting stick noise). */
@@ -33,26 +31,23 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
     private var hatY = 0f
     private var leftTrigger = 0f
     private var rightTrigger = 0f
+    private var stickX = 0f
+    private var stickY = 0f
     private val sentPressure = FloatArray(BUTTONS.size)
-
-    private val sentStick = Array(PadStick.entries.size) { FloatArray(2) }
 
     @Volatile
     private var keyMap: Map<Int, PadButton> = DEFAULT_KEY_MAP
     private var deadzone = DEFAULT_DEADZONE
     private var triggerThreshold = DEFAULT_TRIGGER_THRESHOLD
 
-    private val rightStickAxisCache = HashMap<Int, Pair<Int, Int>>()
-
     /** Takes the button assignments, dead zone and trigger threshold from the settings. */
     fun configure(controls: ControlsSettings) {
         val map = controls.buttonMap
         val assigned = mapOf(
             PadButton.Up to map.up, PadButton.Down to map.down, PadButton.Left to map.left,
-            PadButton.Right to map.right, PadButton.Cross to map.cross, PadButton.Circle to map.circle,
-            PadButton.Square to map.square, PadButton.Triangle to map.triangle, PadButton.L1 to map.l1,
-            PadButton.R1 to map.r1, PadButton.L2 to map.l2, PadButton.R2 to map.r2, PadButton.L3 to map.l3,
-            PadButton.R3 to map.r3, PadButton.Start to map.start, PadButton.Select to map.select,
+            PadButton.Right to map.right, PadButton.A to map.a, PadButton.B to map.b,
+            PadButton.X to map.x, PadButton.Y to map.y, PadButton.L to map.l,
+            PadButton.R to map.r, PadButton.Start to map.start, PadButton.Select to map.select,
         )
         val newMap = HashMap<Int, PadButton>()
         for ((button, key) in assigned) if (key != KeyEvent.KEYCODE_UNKNOWN) newMap[key] = button
@@ -98,19 +93,12 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
             event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
             event.getAxisValue(MotionEvent.AXIS_GAS),
         )
+        val (x, y) = deadzoned(event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y))
+        stickX = x
+        stickY = y
         flushButtons()
-
-        val (rightX, rightY) = rightStickAxes(event.deviceId)
-        val leftMag = sendStick(
-            PadStick.Left,
-            event.getAxisValue(MotionEvent.AXIS_X),
-            event.getAxisValue(MotionEvent.AXIS_Y),
-        )
-        val rightMag = sendStick(
-            PadStick.Right,
-            event.getAxisValue(rightX),
-            event.getAxisValue(rightY),
-        )
+        val leftMag = hypot(x, y)
+        val rightMag = 0f
 
         val deliberate = hatX != 0f || hatY != 0f ||
             max(leftTrigger, rightTrigger) > DELIBERATE_THRESHOLD ||
@@ -126,8 +114,9 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
         hatY = 0f
         leftTrigger = 0f
         rightTrigger = 0f
+        stickX = 0f
+        stickY = 0f
         flushButtons()
-        for (stick in PadStick.entries) sendStick(stick, 0f, 0f)
     }
 
     private fun controllerUsed(deviceId: Int) {
@@ -148,12 +137,13 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
     private fun pressureOf(button: PadButton): Float {
         val fromKey = if (keysHeld[button.ordinal]) 1f else 0f
         val fromAxis = when (button) {
-            PadButton.Up -> if (hatY < -HAT_THRESHOLD) 1f else 0f
-            PadButton.Down -> if (hatY > HAT_THRESHOLD) 1f else 0f
-            PadButton.Left -> if (hatX < -HAT_THRESHOLD) 1f else 0f
-            PadButton.Right -> if (hatX > HAT_THRESHOLD) 1f else 0f
-            PadButton.L2 -> triggerPressure(leftTrigger)
-            PadButton.R2 -> triggerPressure(rightTrigger)
+            // The D-pad, as a HAT axis or as the left stick.
+            PadButton.Up -> if (hatY < -HAT_THRESHOLD || stickY < -STICK_DPAD_THRESHOLD) 1f else 0f
+            PadButton.Down -> if (hatY > HAT_THRESHOLD || stickY > STICK_DPAD_THRESHOLD) 1f else 0f
+            PadButton.Left -> if (hatX < -HAT_THRESHOLD || stickX < -STICK_DPAD_THRESHOLD) 1f else 0f
+            PadButton.Right -> if (hatX > HAT_THRESHOLD || stickX > STICK_DPAD_THRESHOLD) 1f else 0f
+            PadButton.L -> triggerPressure(leftTrigger)
+            PadButton.R -> triggerPressure(rightTrigger)
             else -> 0f
         }
         return max(fromKey, fromAxis)
@@ -162,45 +152,12 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
     private fun triggerPressure(value: Float): Float =
         if (value > triggerThreshold) value.coerceAtMost(1f) else 0f
 
-    /** Applies a radial deadzone, sends the stick if it moved, and returns its magnitude. */
-    private fun sendStick(stick: PadStick, rawX: Float, rawY: Float): Float {
+    /** The stick at ([rawX], [rawY]) with a radial dead zone applied. */
+    private fun deadzoned(rawX: Float, rawY: Float): Pair<Float, Float> {
         val mag = hypot(rawX, rawY)
-        val (x, y) = if (mag <= deadzone) {
-            0f to 0f
-        } else {
-            val scale = ((mag - deadzone) / (1f - deadzone)).coerceAtMost(1f) / mag
-            rawX * scale to rawY * scale
-        }
-        val sent = sentStick[stick.ordinal]
-        if (abs(x - sent[0]) > STICK_EPSILON || abs(y - sent[1]) > STICK_EPSILON ||
-            (x == 0f && y == 0f && (sent[0] != 0f || sent[1] != 0f))
-        ) {
-            sent[0] = x
-            sent[1] = y
-            core.setPadStick(port, stick, x, y)
-        }
-        return mag
-    }
-
-    /**
-     * Most pads put the right stick on Z/RZ, but some use RX/RY: Nintendo pads, and pads
-     * whose RZ is a trigger (it rests at 0 rather than spanning -1..1).
-     */
-    private fun rightStickAxes(deviceId: Int): Pair<Int, Int> = rightStickAxisCache.getOrPut(deviceId) {
-        val device = InputDevice.getDevice(deviceId)
-        fun has(axis: Int) = device?.getMotionRange(axis, InputDevice.SOURCE_JOYSTICK) != null
-        val hasRxRy = has(MotionEvent.AXIS_RX) || has(MotionEvent.AXIS_RY)
-        val rz = device?.getMotionRange(MotionEvent.AXIS_RZ, InputDevice.SOURCE_JOYSTICK)
-        val rzIsTrigger = rz != null && rz.min >= 0f
-        val useRxRy = hasRxRy && (
-            device?.vendorId == VENDOR_NINTENDO || rzIsTrigger ||
-                (!has(MotionEvent.AXIS_Z) && !has(MotionEvent.AXIS_RZ))
-            )
-        if (useRxRy) {
-            MotionEvent.AXIS_RX to MotionEvent.AXIS_RY
-        } else {
-            MotionEvent.AXIS_Z to MotionEvent.AXIS_RZ
-        }
+        if (mag <= deadzone) return 0f to 0f
+        val scale = ((mag - deadzone) / (1f - deadzone)).coerceAtMost(1f) / mag
+        return rawX * scale to rawY * scale
     }
 
     private fun KeyEvent.isFromGamepad(): Boolean =
@@ -211,16 +168,15 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
         val BUTTONS = PadButton.entries
 
         val DEFAULT_KEY_MAP = mapOf(
-            KeyEvent.KEYCODE_BUTTON_A to PadButton.Cross,
-            KeyEvent.KEYCODE_BUTTON_B to PadButton.Circle,
-            KeyEvent.KEYCODE_BUTTON_X to PadButton.Square,
-            KeyEvent.KEYCODE_BUTTON_Y to PadButton.Triangle,
-            KeyEvent.KEYCODE_BUTTON_L1 to PadButton.L1,
-            KeyEvent.KEYCODE_BUTTON_R1 to PadButton.R1,
-            KeyEvent.KEYCODE_BUTTON_L2 to PadButton.L2,
-            KeyEvent.KEYCODE_BUTTON_R2 to PadButton.R2,
-            KeyEvent.KEYCODE_BUTTON_THUMBL to PadButton.L3,
-            KeyEvent.KEYCODE_BUTTON_THUMBR to PadButton.R3,
+            // By position: Android's A is the bottom button, where the SNES pad has B.
+            KeyEvent.KEYCODE_BUTTON_A to PadButton.B,
+            KeyEvent.KEYCODE_BUTTON_B to PadButton.A,
+            KeyEvent.KEYCODE_BUTTON_X to PadButton.Y,
+            KeyEvent.KEYCODE_BUTTON_Y to PadButton.X,
+            KeyEvent.KEYCODE_BUTTON_L1 to PadButton.L,
+            KeyEvent.KEYCODE_BUTTON_R1 to PadButton.R,
+            KeyEvent.KEYCODE_BUTTON_L2 to PadButton.L,
+            KeyEvent.KEYCODE_BUTTON_R2 to PadButton.R,
             KeyEvent.KEYCODE_BUTTON_START to PadButton.Start,
             KeyEvent.KEYCODE_BUTTON_SELECT to PadButton.Select,
             KeyEvent.KEYCODE_DPAD_UP to PadButton.Up,
@@ -229,11 +185,10 @@ class GamepadInput(private val core: EmulatorCore, private val port: Int = 0) {
             KeyEvent.KEYCODE_DPAD_RIGHT to PadButton.Right,
         )
 
-        const val VENDOR_NINTENDO = 0x057E
         const val DEFAULT_DEADZONE = 0.15f
         const val DEFAULT_TRIGGER_THRESHOLD = 0.08f
-        const val STICK_EPSILON = 0.004f
         const val HAT_THRESHOLD = 0.5f
+        const val STICK_DPAD_THRESHOLD = 0.5f
         const val DELIBERATE_THRESHOLD = 0.5f
     }
 }

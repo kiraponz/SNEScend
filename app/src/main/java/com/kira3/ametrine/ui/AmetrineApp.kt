@@ -20,7 +20,6 @@ import com.kira3.ametrine.ui.about.LicensesScreen
 import com.kira3.ametrine.ui.backup.BackupScreen
 import com.kira3.ametrine.ui.backup.SaveStatesScreen
 import com.kira3.ametrine.ui.bios.BiosScreen
-import com.kira3.ametrine.ui.memcards.MemoryCardSavesScreen
 import com.kira3.ametrine.ui.memcards.MemoryCardsScreen
 import com.kira3.ametrine.ui.library.LibraryScreen
 import com.kira3.ametrine.ui.settings.CheatGamesScreen
@@ -45,7 +44,7 @@ fun AmetrineApp() {
     // Beside the settings list, opening something replaces what is open in the detail pane.
     fun openDetail(route: NavKey) {
         val last = backStack.lastOrNull()
-        if (last is SettingsCategoryRoute || last is SettingsSearchRoute || last is GpuDriverRoute || last is BiosRoute || last is MemoryCardsRoute || last is MemoryCardRoute || last is CheatsRoute || last is CheatGamesRoute || last is MacrosRoute || last is MacroGamesRoute || last is BackupRoute || last is SaveStatesRoute || last is AboutRoute || last is LicensesRoute || last is LicenseRoute) {
+        if (last is SettingsCategoryRoute || last is SettingsSearchRoute || last is GpuDriverRoute || last is BiosRoute || last is MemoryCardsRoute || last is CheatsRoute || last is CheatGamesRoute || last is MacrosRoute || last is MacroGamesRoute || last is BackupRoute || last is SaveStatesRoute || last is AboutRoute || last is LicensesRoute || last is LicenseRoute) {
             while (backStack.lastOrNull() !is SettingsRoute) backStack.removeLastOrNull()
         }
         backStack.add(route)
@@ -77,15 +76,7 @@ fun AmetrineApp() {
             entry<MemoryCardsRoute>(
                 metadata = { ListDetailSceneStrategy.detailPane(sceneKey = SettingsRoute()) },
             ) {
-                MemoryCardsScreen(
-                    onOpenCard = { backStack.add(MemoryCardRoute(it)) },
-                    onBack = { backStack.removeLastOrNull() },
-                )
-            }
-            entry<MemoryCardRoute>(
-                metadata = { ListDetailSceneStrategy.detailPane(sceneKey = SettingsRoute()) },
-            ) { route ->
-                MemoryCardSavesScreen(cardName = route.name, onBack = { backStack.removeLastOrNull() })
+                MemoryCardsScreen(onBack = { backStack.removeLastOrNull() })
             }
             entry<SettingsRoute>(
                 metadata = { route ->

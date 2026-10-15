@@ -64,44 +64,45 @@ import com.kira3.ametrine.ui.settings.settingsTopBarColors
 import java.util.Date
 
 /**
- * The memory cards the app holds: create one, copy one in from a file or out to a file,
- * rename and delete. (Which card a game uses is chosen in the settings.)
+ * The games' battery saves: copy one out to a file, put a file in as a game's save (from another
+ * emulator, say), or delete one. A game writes its save when it stops.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MemoryCardsScreen(
-    onOpenCard: (String) -> Unit,
     onBack: () -> Unit,
     viewModel: MemoryCardsViewModel = viewModel(factory = MemoryCardsViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var creating by remember { mutableStateOf(false) }
-    var renaming by remember { mutableStateOf<MemoryCard?>(null) }
-    var deleting by remember { mutableStateOf<MemoryCard?>(null) }
-    var formatting by remember { mutableStateOf<MemoryCard?>(null) }
-    var exporting by remember { mutableStateOf<MemoryCard?>(null) }
+    var deleting by remember { mutableStateOf<SaveEntry?>(null) }
+    var exporting by remember { mutableStateOf<SaveEntry?>(null) }
+    /** The game a picked file goes to; the file picker opens once one is chosen. */
+    var importTarget by remember { mutableStateOf<String?>(null) }
+    var choosingGame by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     // Beside the settings list there is nothing to go back to.
     val twoPane = LocalListDetailSceneScope.current != null
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val pickCard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(viewModel::import)
+    val pickSave = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val serial = importTarget
+        importTarget = null
+        if (uri != null && serial != null) viewModel.import(uri, serial)
     }
-    val saveCard = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val card = exporting
+    val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val entry = exporting
         exporting = null
-        if (uri != null && card != null) viewModel.export(card, uri)
+        if (uri != null && entry != null) viewModel.export(entry.card, uri)
+    }
+    fun importInto(serial: String) {
+        importTarget = serial
+        pickSave.launch(arrayOf("*/*"))
     }
 
     val messages = mapOf(
-        MemoryCardMessage.Created to stringResource(R.string.memcards_created),
         MemoryCardMessage.Imported to stringResource(R.string.memcards_imported),
         MemoryCardMessage.Exported to stringResource(R.string.memcards_exported),
-        MemoryCardMessage.Renamed to stringResource(R.string.memcards_renamed),
         MemoryCardMessage.Deleted to stringResource(R.string.memcards_deleted),
-        MemoryCardMessage.Formatted to stringResource(R.string.memcards_formatted),
-        MemoryCardMessage.Exists to stringResource(R.string.memcards_exists),
         MemoryCardMessage.Invalid to stringResource(R.string.memcards_invalid),
         MemoryCardMessage.Failed to stringResource(R.string.memcards_failed),
         MemoryCardMessage.Busy to stringResource(R.string.memcards_busy),
@@ -119,26 +120,21 @@ fun MemoryCardsScreen(
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.memcards_title)) },
                 navigationIcon = { if (!twoPane) BackButton(onBack) },
-                actions = {
-                    TextButton(onClick = { pickCard.launch(arrayOf("*/*")) }, enabled = !state.busy) {
-                        Text(stringResource(R.string.memcards_import))
-                    }
-                },
                 colors = settingsTopBarColors(),
                 scrollBehavior = scrollBehavior,
             )
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { if (!state.busy) creating = true },
+                onClick = { if (!state.busy) choosingGame = true },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.memcards_create)) },
+                text = { Text(stringResource(R.string.memcards_import)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        val cards = state.cards
-        if (cards == null) {
+        val saves = state.saves
+        if (saves == null) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(innerPadding).padding(16.dp))
             return@Scaffold
         }
@@ -146,7 +142,7 @@ fun MemoryCardsScreen(
             contentPadding = listPadding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
-            if (cards.isEmpty()) {
+            if (saves.isEmpty()) {
                 item(key = "empty") {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
@@ -157,27 +153,26 @@ fun MemoryCardsScreen(
                     }
                 }
             }
-            itemsIndexed(cards, key = { _, card -> card.name }) { index, card ->
+            itemsIndexed(saves, key = { _, entry -> entry.card.name }) { index, entry ->
                 SegmentedListItem(
-                    onClick = { onOpenCard(card.name) },
-                    shapes = segmentedShapes(index, cards.size),
+                    onClick = {},
+                    shapes = segmentedShapes(index, saves.size),
                     colors = settingsListColors(),
                     modifier = Modifier.animateItem(),
                     trailingContent = {
-                        CardMenu(
+                        SaveMenu(
                             enabled = !state.busy,
                             onExport = {
-                                exporting = card
-                                saveCard.launch(viewModel.exportName(card))
+                                exporting = entry
+                                saveFile.launch(viewModel.exportName(entry))
                             },
-                            onRename = { renaming = card },
-                            onFormat = { formatting = card },
-                            onDelete = { deleting = card },
+                            onReplace = { importInto(entry.card.serial) },
+                            onDelete = { deleting = entry },
                         )
                     },
-                    supportingContent = { Text(card.details()) },
+                    supportingContent = { Text(entry.details()) },
                 ) {
-                    Text(card.name, maxLines = 1)
+                    Text(entry.title ?: entry.card.serial, maxLines = 1)
                 }
             }
             item(key = "about") {
@@ -192,55 +187,25 @@ fun MemoryCardsScreen(
         }
     }
 
-    if (creating) {
-        NameDialog(
-            title = stringResource(R.string.memcards_create),
-            initial = "",
-            confirm = stringResource(R.string.memcards_create),
-            onConfirm = { name ->
-                creating = false
-                viewModel.create(name)
+    if (choosingGame) {
+        GameDialog(
+            games = state.games,
+            onPick = {
+                choosingGame = false
+                importInto(it.serial)
             },
-            onDismiss = { creating = false },
+            onDismiss = { choosingGame = false },
         )
     }
-    renaming?.let { card ->
-        NameDialog(
-            title = stringResource(R.string.memcards_rename),
-            initial = card.name,
-            confirm = stringResource(R.string.memcards_rename),
-            onConfirm = {
-                renaming = null
-                viewModel.rename(card, it)
-            },
-            onDismiss = { renaming = null },
-        )
-    }
-    formatting?.let { card ->
-        AlertDialog(
-            onDismissRequest = { formatting = null },
-            title = { Text(stringResource(R.string.memcards_format_title, card.name)) },
-            text = { Text(stringResource(R.string.memcards_format_text)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    formatting = null
-                    viewModel.format(card)
-                }) { Text(stringResource(R.string.memcards_format)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { formatting = null }) { Text(stringResource(R.string.settings_cancel)) }
-            },
-        )
-    }
-    deleting?.let { card ->
+    deleting?.let { entry ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text(stringResource(R.string.memcards_delete_title, card.name)) },
+            title = { Text(stringResource(R.string.memcards_delete_title, entry.title ?: entry.card.serial)) },
             text = { Text(stringResource(R.string.memcards_delete_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     deleting = null
-                    viewModel.delete(card)
+                    viewModel.delete(entry.card)
                 }) { Text(stringResource(R.string.memcards_delete)) }
             },
             dismissButton = {
@@ -251,7 +216,7 @@ fun MemoryCardsScreen(
 }
 
 @Composable
-private fun CardMenu(enabled: Boolean, onExport: () -> Unit, onRename: () -> Unit, onFormat: () -> Unit, onDelete: () -> Unit) {
+private fun SaveMenu(enabled: Boolean, onExport: () -> Unit, onReplace: () -> Unit, onDelete: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, enabled = enabled) {
@@ -263,12 +228,8 @@ private fun CardMenu(enabled: Boolean, onExport: () -> Unit, onRename: () -> Uni
                 onClick = { open = false; onExport() },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.memcards_rename)) },
-                onClick = { open = false; onRename() },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.memcards_format)) },
-                onClick = { open = false; onFormat() },
+                text = { Text(stringResource(R.string.memcards_replace)) },
+                onClick = { open = false; onReplace() },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.memcards_delete)) },
@@ -278,25 +239,36 @@ private fun CardMenu(enabled: Boolean, onExport: () -> Unit, onRename: () -> Uni
     }
 }
 
-/** When the card was last written. */
+/** The game's serial, the save's size and when the game last wrote it. */
 @Composable
-private fun MemoryCard.details(): String = DateFormat.getMediumDateFormat(LocalContext.current).format(Date(modified))
+private fun SaveEntry.details(): String {
+    val context = LocalContext.current
+    val date = DateFormat.getMediumDateFormat(context).format(Date(card.modified))
+    return "${card.serial} · ${Formatter.formatShortFileSize(context, card.bytes)} · $date"
+}
 
+/** Picks the library game an imported save goes to. */
 @Composable
-private fun NameDialog(title: String, initial: String, confirm: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf(initial) }
+private fun GameDialog(games: List<SaveGame>, onPick: (SaveGame) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(stringResource(R.string.memcards_import_for)) },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.memcards_name)) },
-                singleLine = true,
-            )
+            if (games.isEmpty()) {
+                Text(stringResource(R.string.memcards_import_no_games))
+            } else {
+                LazyColumn {
+                    itemsIndexed(games, key = { _, game -> game.serial }) { _, game ->
+                        Text(
+                            game.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.fillMaxWidth().clickable { onPick(game) }.padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name) }) { Text(confirm) } },
+        confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_cancel)) } },
     )
 }

@@ -115,7 +115,6 @@ fun SettingRow(
         is TextInput -> TextRow(row, setting, actions)
         GeminiApiKeySetting -> GeminiKeyRow(row)
         GeminiModelSetting -> GeminiModelRow(row, actions)
-        GameBiosSetting -> DialogChoiceRow(row, biosChoice(state), actions)
         GpuDriverSetting -> GpuDriverRow(row, state, actions)
         BiosManageSetting -> BiosManageRow(row, actions)
         ControllersSetting -> ControllersRow(row)
@@ -123,7 +122,6 @@ fun SettingRow(
         PadLayoutSetting -> PadLayoutRow(row, actions)
         is ResetSetting -> ResetRow(row, setting, state, isGame, actions)
         MemoryCardsManageSetting -> MemoryCardsManageRow(row, actions)
-        is MemoryCardSlotSetting -> DialogChoiceRow(row, cardChoice(setting, state, values), actions)
     }
 }
 
@@ -135,33 +133,6 @@ private class RowParams(
     val overline: (@Composable () -> Unit)?,
     val modifier: Modifier,
 )
-
-@Composable
-private fun biosChoice(state: SettingsUiState): Choice = Choice(
-    GameBiosSetting.path!!,
-    GameBiosSetting.title,
-    GameBiosSetting.summary,
-    options = listOf(Option("", Label.res(R.string.settings_bios_default))) +
-        state.bioses.map { Option(it.fileName, Label.text("${it.metadata.description} (${it.fileName})")) },
-    gameOnly = true,
-)
-
-@Composable
-private fun cardChoice(setting: MemoryCardSlotSetting, state: SettingsUiState, values: SettingsValues): Choice {
-    val current = values.string(setting.path!!)
-    // The file system ignores case, so a stored "shared_card_1.mcd" is the card "Shared_Card_1.mcd": keep the stored
-    // spelling as the value so that card shows as selected.
-    val options = state.cards.map { card ->
-        Option(if (card.name.equals(current, ignoreCase = true)) current else card.name, Label.text(card.name))
-    }
-    // The card in use is offered even if its file does not exist yet: the core creates it on first use.
-    val all = if (current.isEmpty() || options.any { it.value == current }) options else options + Option(current, Label.text(current))
-    return Choice(
-        setting.path, setting.title, 0,
-        options = all,
-        visibleWhen = setting.visibleWhen, enabledWhen = setting.enabledWhen,
-    )
-}
 
 @Composable
 private fun MemoryCardsManageRow(row: RowParams, actions: SettingsActions) {

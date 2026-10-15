@@ -291,7 +291,7 @@ class EmulationActivity : ComponentActivity() {
                         } else {
                             null
                         },
-                        floatingSticks = settings?.controls?.stickMode == 1,
+                        floatingSticks = false,
                         gameAspect = settings?.display?.let(::gameAspectOf),
                         opacity = (settings?.controls?.padOpacity ?: 100) / 100f,
                         haptics = settings?.controls?.padHaptics != false,
@@ -320,6 +320,7 @@ class EmulationActivity : ComponentActivity() {
                     if (serial != null && settings?.gemini?.memosVisible == true && memoList.isNotEmpty()) {
                         MemoOverlay(memoList, memoActions)
                     }
+                    if (settings?.osd?.showFps == true && !editPadOnly) FpsCounter(core)
                     val gameAspect = settings?.display?.let(::gameAspectOf)
                     val playingMacro by macroPlayer.playing.collectAsState()
                     if (recordingSeconds >= 0) {

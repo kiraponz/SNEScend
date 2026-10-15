@@ -138,9 +138,6 @@ class EmulatorCore(context: Context) {
      * to boot, or the one running). Call it before [runVm], and again whenever settings change
      * while a game runs: the running game takes them straight away, except those in
      * [SettingsEffects.appliesOnNextBoot], which keep what it booted with.
-     *
-     * The game's BIOS ([com.kira3.ametrine.emucore.settings.SystemSettings.biosFilename]) is
-     * dropped when its file is gone, so the core picks one for the game's region instead.
      */
     suspend fun applySettings(
         global: EmulatorSettings,
@@ -149,19 +146,13 @@ class EmulatorCore(context: Context) {
     ) = withContext(Dispatchers.IO) {
         applyMutex.withLock {
             var effective = SettingsJson.merge(global, overrides)
-            val bios = effective.system.biosFilename
-            if (bios.isNotEmpty() && !File(biosDir, bios).isFile) {
-                Log.w(TAG, "BIOS $bios is not installed; the core picks one")
-                effective = effective.copy(system = effective.system.copy(biosFilename = ""))
-            }
 
             val running = NativeCore.hasActiveSystem()
             val boot = bootSettings
             if (!running || boot == null) {
                 bootSettings = effective
             } else {
-                // Changing these under a running game is not safe (the renderer) or does
-                // nothing until a reset (the region, the BIOS).
+                // These do nothing until the game boots again (the region, the RAM at power on).
                 effective = SettingsJson.copyPaths(effective, boot, SettingsEffects.appliesOnNextBoot)
             }
 

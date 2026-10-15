@@ -50,7 +50,7 @@ import com.kira3.ametrine.R
 import com.kira3.ametrine.emucore.Cheat
 import com.kira3.ametrine.emucore.SnesCodes
 
-/** A game's cheats: switch them on and off, add and edit codes, import a cheat file or the cheat database's codes. */
+/** A game's cheats: switch them on and off, add and edit codes, import a cheat file. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CheatsScreen(
@@ -95,13 +95,6 @@ fun CheatsScreen(
                             Text(stringResource(R.string.cheats_import))
                         }
                         DropdownMenu(expanded = importMenu, onDismissRequest = { importMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.cheats_import_database)) },
-                                onClick = {
-                                    importMenu = false
-                                    viewModel.importFromDatabase()
-                                },
-                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.cheats_import_file)) },
                                 onClick = {

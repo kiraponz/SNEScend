@@ -1,31 +1,22 @@
 package com.kira3.ametrine.emucore
 
-/**
- * A DualShock button. [code] is the core's bind index for it (AnalogController::Button), which
- * the digital pad shares for the buttons it has.
- */
+/** A SNES pad button. [code] is the core's index for it (SnesController::Buttons). */
 enum class PadButton(internal val code: Int) {
-    Up(4),
-    Down(6),
-    Left(7),
-    Right(5),
-    Cross(14),
-    Circle(13),
-    Square(15),
-    Triangle(12),
-    L1(10),
-    R1(11),
-    L2(8),
-    R2(9),
-    L3(1),
-    R3(2),
-    Start(3),
-    Select(0),
-
-    /** The Analog (mode) button, which toggles the pad's analog mode. */
-    Analog(16),
+    Up(8),
+    Down(9),
+    Left(10),
+    Right(11),
+    A(0),
+    B(1),
+    X(2),
+    Y(3),
+    L(4),
+    R(5),
+    Start(7),
+    Select(6),
 }
 
+/** An analog stick. The SNES pad has none; a physical controller's left stick works as the D-pad. */
 enum class PadStick {
     Left,
     Right,

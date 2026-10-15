@@ -17,10 +17,6 @@ data object BiosRoute : NavKey
 @Serializable
 data object MemoryCardsRoute : NavKey
 
-/** The saves on one memory card, a page of the global settings. */
-@Serializable
-data class MemoryCardRoute(val name: String) : NavKey
-
 /** The settings categories: global when [serial] is null, else that game's. */
 @Serializable
 data class SettingsRoute(val serial: String? = null, val gameTitle: String? = null) : NavKey

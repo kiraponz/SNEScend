@@ -735,10 +735,11 @@ public:
 
 	void Stop() override
 	{
-		Pause();
-		if(_stream) {
-			AAudioStream_requestFlush(_stream);
+		// Stopped rather than paused: a stream that is still pausing cannot be flushed.
+		if(_stream && _playing) {
+			AAudioStream_requestStop(_stream);
 		}
+		_playing = false;
 		_readPosition = 0;
 		_writePosition = 0;
 		ResetStats();

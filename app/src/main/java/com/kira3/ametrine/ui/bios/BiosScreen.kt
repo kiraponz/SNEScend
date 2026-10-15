@@ -47,7 +47,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kira3.ametrine.R
 import com.kira3.ametrine.data.Bios
-import com.kira3.ametrine.emucore.BiosRegion
 import com.kira3.ametrine.ui.settings.BackButton
 import com.kira3.ametrine.ui.settings.listPadding
 import com.kira3.ametrine.ui.settings.segmentedShapes
@@ -55,8 +54,8 @@ import com.kira3.ametrine.ui.settings.settingsListColors
 import com.kira3.ametrine.ui.settings.settingsTopBarColors
 
 /**
- * The BIOS files the app holds: pick the one games boot with, add files, delete them.
- * (A game can pick its own BIOS in its settings.)
+ * The firmware files the app holds for cartridges with a coprocessor (DSP-n, ST010/011/018) and for
+ * the Satellaview and Sufami Turbo: add files, delete them. Most games need none.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -171,14 +170,5 @@ fun BiosScreen(
     }
 }
 
-/** E.g. "Japan · SCPH-7000, 7500, 9000 (v4.0 08-18-97 J)". */
-@Composable
-private fun Bios.details(): String = "${stringResource(metadata.region.labelRes)} · ${metadata.description}"
-
-private val BiosRegion.labelRes: Int
-    get() = when (this) {
-        BiosRegion.Japan -> R.string.bios_region_japan
-        BiosRegion.Usa -> R.string.bios_region_usa
-        BiosRegion.Europe -> R.string.bios_region_europe
-        BiosRegion.Unknown -> R.string.bios_region_unknown
-    }
+/** What the firmware is for, e.g. "DSP-1 (Pilotwings, Super Mario Kart)". */
+private fun Bios.details(): String = metadata.description

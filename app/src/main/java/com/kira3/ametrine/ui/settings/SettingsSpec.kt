@@ -22,7 +22,6 @@ enum class SettingsCategory(
     Audio(R.string.settings_audio, R.string.settings_audio_summary, R.drawable.ic_volume_up),
     Controls(R.string.settings_controls, R.string.settings_controls_summary, R.drawable.ic_gamepad),
     System(R.string.settings_system, R.string.settings_system_summary, R.drawable.ic_memory),
-    Advanced(R.string.settings_advanced, R.string.settings_advanced_summary, R.drawable.ic_build),
     Miscellaneous(R.string.settings_misc, R.string.settings_misc_summary, R.drawable.ic_tune);
 
     val sections: List<SettingsSection> get() = SettingsCatalog.sections(this)
@@ -139,18 +138,13 @@ data object GeminiModelSetting : Setting(
     enabledWhen = { it.boolean("gemini.enabled") },
 )
 
-/** The BIOS a game boots with, for every region; the options are the installed BIOS files. */
-data object GameBiosSetting : Setting(
-    "system.biosFilename", R.string.settings_game_bios, R.string.settings_game_bios_summary, null, null, gameOnly = true,
-)
-
 /** The custom Vulkan driver, picked on its own screen where packs are also installed. */
 data object GpuDriverSetting : Setting(
     "output.customDriverId", R.string.settings_gpu_driver, R.string.settings_gpu_driver_summary, null,
     enabledWhen = { it.string("gpu.renderer") in setOf("auto", "vulkan") },
 )
 
-/** The BIOS files the app holds, managed on their own screen. */
+/** The coprocessors' firmware files the app holds, managed on their own screen. */
 data object BiosManageSetting : Setting(
     null, R.string.settings_bios_manage, R.string.settings_bios_manage_summary, null, null, globalOnly = true,
 )
@@ -180,14 +174,7 @@ class ResetSetting(
     val defaults: List<Pair<String, Any>>,
 ) : Setting(null, title, summary, null, null)
 
-/** The card in a memory card slot, chosen from the cards the app holds. */
-class MemoryCardSlotSetting(
-    path: String,
-    @StringRes title: Int,
-    enabledWhen: ((SettingsValues) -> Boolean)? = null,
-) : Setting(path, title, 0, null, enabledWhen)
-
-/** The memory cards the app holds, managed on their own screen. */
+/** The games' battery saves, managed on their own screen. */
 data object MemoryCardsManageSetting : Setting(
     null, R.string.settings_memory_cards_manage, R.string.settings_memory_cards_manage_summary, null, null, globalOnly = true,
 )
