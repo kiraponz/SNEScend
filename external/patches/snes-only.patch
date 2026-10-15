@@ -1,3 +1,10 @@
+SNEScend's change to MesenCE 2.2.1 (https://github.com/nesdev-org/MesenCE), made in
+October 2026 by Kira for SNEScend. Distributed under the GPL-3.0, as MesenCE is.
+
+With MESEN_SNES_ONLY defined, Emulator.cpp loads only SNES games (the other consoles are not
+built in) and never starts the debugger. emucore/src/main/cpp/CMakeLists.txt applies this patch
+to copies of the files at build time; the submodule itself stays unchanged.
+
 --- a/Core/Shared/Emulator.cpp
 +++ b/Core/Shared/Emulator.cpp
 @@ -31,12 +31,16 @@
