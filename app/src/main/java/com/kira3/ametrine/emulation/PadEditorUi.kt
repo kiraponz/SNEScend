@@ -119,8 +119,6 @@ fun PadEditorBar(
 private fun padControlLabel(id: String): String = stringResource(
     when (id) {
         "dpad" -> R.string.pad_edit_dpad
-        "stick.Left" -> R.string.pad_edit_stick_left
-        "stick.Right" -> R.string.pad_edit_stick_right
         "extra.fastForward" -> R.string.emulation_fast_forward
         "extra.rewind" -> R.string.rewind_title
         "extra.screenshot" -> R.string.menu_screenshot

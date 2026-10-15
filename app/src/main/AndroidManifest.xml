@@ -27,16 +27,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Starts EmulationActivity again from the main process, after the :emu process has
-             died. See RelaunchActivity. -->
-        <activity
-            android:name=".emulation.RelaunchActivity"
-            android:exported="false"
-            android:noHistory="true"
-            android:theme="@style/Theme.Ametrine.Relaunch" />
-
-        <!-- Its own process, killed when the game ends: a GPU driver loaded into a process
-             (adrenotools hooks) cannot be unloaded, so each game starts with a clean one.
+        <!-- Its own process, killed when the game ends, so each game starts with a clean one.
              configChanges: rotation, resizing and the like must not recreate this activity,
              because the VM runs on a thread it owns. -->
         <activity

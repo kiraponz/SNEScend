@@ -41,13 +41,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.kira3.ametrine.R
 import com.kira3.ametrine.data.GameRecordRepository
-import com.kira3.ametrine.data.GpuDriver
 import com.kira3.ametrine.AmetrineApplication
 import com.kira3.ametrine.ui.theme.AmetrineTheme
 import com.kira3.ametrine.emucore.Cheat
 import com.kira3.ametrine.emucore.EmulatorCore
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 import com.kira3.ametrine.emucore.VmState
 import com.kira3.ametrine.emulation.input.ControllerRumble
 import com.kira3.ametrine.emulation.input.GamepadInput
@@ -111,9 +109,6 @@ class EmulationActivity : ComponentActivity() {
         object : PadSink {
             override fun onButton(button: PadButton, pressed: Boolean) =
                 core.setPadButton(PORT, button, pressed)
-
-            override fun onStick(stick: PadStick, x: Float, y: Float) =
-                core.setPadStick(PORT, stick, x, y)
         }
     }
 
@@ -210,12 +205,6 @@ class EmulationActivity : ComponentActivity() {
     /** Set by Reset: when the VM stops, boot the game again instead of finishing. */
     private var restartRequested = false
 
-    /** The custom driver the current boot uses, or null for the system driver. */
-    private var customDriverInUse: GpuDriver? = null
-
-    /** Boots in this activity use the system driver: a boot failed with a custom one, see [onVmStopped]. */
-    private var systemDriverForced = false
-
     /** How long the :emu process stays alive after the game ends, so a Toast can be seen. */
     private var exitDelayMs = 0L
 
@@ -234,10 +223,6 @@ class EmulationActivity : ComponentActivity() {
         editPadOnly = intent.getBooleanExtra(EXTRA_EDIT_PAD_ONLY, false)
         // The BIOS menu (empty URI) isn't a game.
         if (gameUri != Uri.EMPTY) recordKey = GameRecordRepository.keyOf(serial, gameUri.toString())
-        systemDriverForced = intent.getBooleanExtra(EXTRA_SYSTEM_DRIVER, false)
-        intent.getStringExtra(EXTRA_FAILED_DRIVER)?.let { name ->
-            Toast.makeText(this, getString(R.string.emulation_driver_failed, name), Toast.LENGTH_LONG).show()
-        }
         onBackPressedDispatcher.addCallback(this) {
             when {
                 padEditor != null -> closePadEditor(null)
@@ -291,8 +276,6 @@ class EmulationActivity : ComponentActivity() {
                         } else {
                             null
                         },
-                        floatingSticks = false,
-                        gameAspect = settings?.display?.let(::gameAspectOf),
                         opacity = (settings?.controls?.padOpacity ?: 100) / 100f,
                         haptics = settings?.controls?.padHaptics != false,
                         edits = padEdits,
@@ -460,7 +443,6 @@ class EmulationActivity : ComponentActivity() {
         val suspended = serial?.takeIf { resume }?.let { withContext(Dispatchers.IO) { core.suspendStateFile(it) } }
         suspendFile = suspended
         core.setBootSaveState(suspended)
-        customDriverInUse = useVulkanDriver(global, SettingsJson.merge(global, overrides))
 
         // Every game the core runs gets this game's cheats, so a game without a serial gets none.
         core.setCheats(serial?.let { container.cheatRepository.load(it) }.orEmpty())
@@ -471,18 +453,8 @@ class EmulationActivity : ComponentActivity() {
             val error = core.runVm(gameUri.toString(), serial)
             runOnUiThread { onVmStopped(gameUri, error) }
         }
-        customDriverInUse?.let { driver ->
-            lifecycleScope.launch {
-                while (!core.hasActiveVm && emulationThread != null) delay(VM_POLL_MS)
-                // The Vulkan library falls back to the system loader without saying so.
-                val failure = core.customDriverFailure ?: return@launch
-                Log.w(TAG, "Driver ${driver.id} did not open: $failure")
-                Toast.makeText(this@EmulationActivity, getString(R.string.emulation_driver_not_loaded, driver.name, failure), Toast.LENGTH_LONG).show()
-            }
-        }
         suspended?.let { file ->
-            // Used once the VM is up: it has loaded the state by then. Kept until then so a
-            // driver fallback can boot into it again.
+            // Used once the VM is up: it has loaded the state by then.
             lifecycleScope.launch {
                 while (suspendFile === file && !core.hasActiveVm) delay(VM_POLL_MS)
                 discardSuspendState()
@@ -499,15 +471,7 @@ class EmulationActivity : ComponentActivity() {
     }
 
     private fun onVmStopped(gameUri: Uri, error: String?) {
-        val failedDriver = customDriverInUse
         when {
-            // The custom driver loaded but the game still could not start (e.g. the GPU could
-            // not create a Vulkan device with it). Its library stays loaded in this process,
-            // so try again in a new one with the system driver.
-            error != null && failedDriver != null && !systemDriverForced -> {
-                Log.w(TAG, "Boot failed with driver ${failedDriver.id} ($error); retrying with the system driver")
-                relaunch(gameUri, failedDriver.name)
-            }
             error != null -> {
                 Log.e(TAG, "Boot failed: $error")
                 discardSuspendState()
@@ -522,22 +486,6 @@ class EmulationActivity : ComponentActivity() {
                 finish()
             }
         }
-    }
-
-    /**
-     * Points the core at the custom Vulkan driver this game uses. A game whose driver has been
-     * deleted follows the global driver, and the system driver is used when neither is installed
-     * (or after a boot failed with the custom driver, see [systemDriverForced]).
-     * Returns the custom driver set, or null for the system driver.
-     */
-    private suspend fun useVulkanDriver(global: EmulatorSettings, effective: EmulatorSettings): GpuDriver? {
-        val installed = container.driverRepository.list()
-        fun find(id: String) = installed.firstOrNull { it.id == id }
-        val id = effective.output.customDriverId
-        val driver = if (id.isEmpty() || systemDriverForced) null else find(id) ?: find(global.output.customDriverId)
-        if (id.isNotEmpty() && driver?.id != id) Log.w(TAG, "Driver $id is not installed, using ${driver?.id ?: "the system driver"}")
-        core.useVulkanDriver(driver?.toVulkanDriver(), effective.output.turnipUbwcHint)
-        return driver
     }
 
     private suspend fun apply(global: EmulatorSettings, overrides: SettingsOverrides) {
@@ -1403,21 +1351,8 @@ class EmulationActivity : ComponentActivity() {
         finish()
     }
 
-    /** Starts the game again with the system driver in a fresh process, and ends this one. */
-    private fun relaunch(gameUri: Uri, failedDriverName: String) {
-        val target = intent(this, gameUri, serial)
-            .putExtra(EXTRA_SYSTEM_DRIVER, true)
-            .putExtra(EXTRA_FAILED_DRIVER, failedDriverName)
-        startActivity(RelaunchActivity.intent(this, target))
-        finish()
-        // Not left to onDestroy: RelaunchActivity is translucent, so this activity stays
-        // visible below it and would be destroyed only after the new one has started in
-        // this very process.
-        exitProcess()
-    }
-
     /**
-     * Ends the :emu process once the VM thread is done. Anything a driver or the core loaded
+     * Ends the :emu process once the VM thread is done. Anything the core loaded
      * stays in a process until it dies, so a game never shares one with the next.
      */
     private fun exitProcess() {
@@ -1461,8 +1396,6 @@ class EmulationActivity : ComponentActivity() {
         private const val EXTRA_GAME_URI = "com.kira3.ametrine.extra.GAME_URI"
         private const val EXTRA_SERIAL = "com.kira3.ametrine.extra.SERIAL"
         private const val EXTRA_EDIT_PAD_ONLY = "com.kira3.ametrine.extra.EDIT_PAD_ONLY"
-        private const val EXTRA_SYSTEM_DRIVER = "com.kira3.ametrine.extra.SYSTEM_DRIVER"
-        private const val EXTRA_FAILED_DRIVER = "com.kira3.ametrine.extra.FAILED_DRIVER"
         private const val VM_STOP_WAIT_MS = 5_000L
         private const val VM_POLL_MS = 200L
         private const val RECORDING_TICK_MS = 250L

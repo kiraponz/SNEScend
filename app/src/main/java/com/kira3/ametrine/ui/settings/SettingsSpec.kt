@@ -138,12 +138,6 @@ data object GeminiModelSetting : Setting(
     enabledWhen = { it.boolean("gemini.enabled") },
 )
 
-/** The custom Vulkan driver, picked on its own screen where packs are also installed. */
-data object GpuDriverSetting : Setting(
-    "output.customDriverId", R.string.settings_gpu_driver, R.string.settings_gpu_driver_summary, null,
-    enabledWhen = { it.string("gpu.renderer") in setOf("auto", "vulkan") },
-)
-
 /** The coprocessors' firmware files the app holds, managed on their own screen. */
 data object BiosManageSetting : Setting(
     null, R.string.settings_bios_manage, R.string.settings_bios_manage_summary, null, null, globalOnly = true,

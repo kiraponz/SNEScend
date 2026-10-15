@@ -17,7 +17,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -53,7 +52,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kira3.ametrine.R
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -61,7 +59,6 @@ import kotlin.math.roundToInt
 /** Where the touch pad sends its input. Called on the UI thread, straight from touch handling. */
 interface PadSink {
     fun onButton(button: PadButton, pressed: Boolean)
-    fun onStick(stick: PadStick, x: Float, y: Float)
 }
 
 /**
@@ -110,10 +107,6 @@ class PadEditor(initial: PadLayoutEdits) {
  *
  * While hidden ([visible] false) it draws nothing, and a touch anywhere calls [onShowRequest].
  *
- * With [floatingSticks] the drawn sticks are replaced by ones that appear where a finger touches an
- * empty part of the screen (left half: left stick, right half: right stick) and go when it lifts.
- * Held upright, a floating stick does not start on the picture, which the core draws at the top
- * with the shape [gameAspect] (width / height; null when it fills the screen).
  * [opacity] fades the whole pad; [haptics] turns off the vibration on a press.
  *
  * After [idleSeconds] without a touch (0 = never) the pad and the function buttons turn more transparent,
@@ -134,8 +127,6 @@ fun TouchPad(
     screenshotButton: (@Composable () -> Unit)? = null,
     macroButton: (@Composable () -> Unit)? = null,
     aiButton: (@Composable () -> Unit)? = null,
-    floatingSticks: Boolean = false,
-    gameAspect: Float? = null,
     opacity: Float = 1f,
     haptics: Boolean = true,
     edits: PadLayoutEdits = PadLayoutEdits(),
@@ -193,9 +184,8 @@ fun TouchPad(
         // Without the pad (a controller is in use) only the function buttons are shown, in a layout of their own.
         val controllerMode = editor?.controllerMode ?: !visible
         val activeEdits = (editor?.edits ?: edits).of(landscape, controllerMode)
-        val layout = remember(constraints.maxWidth, constraints.maxHeight, maxUnit, floatingSticks, activeEdits, controllerMode) {
+        val layout = remember(constraints.maxWidth, constraints.maxHeight, maxUnit, activeEdits, controllerMode) {
             (if (controllerMode) controllerLayout(area, maxUnit) else touchPadLayout(area, maxUnit))
-                .let { if (floatingSticks) it.withoutSticks() else it }
                 .edited(activeEdits, area)
         }
         val currentLayout by rememberUpdatedState(layout)
@@ -207,15 +197,11 @@ fun TouchPad(
             Modifier
                 .fillMaxSize()
                 .alpha(opacity * idleFactor)
-                .pointerInput(editor, layout.takeIf { editor == null }, visible, floatingSticks, gameAspect) {
+                .pointerInput(editor, layout.takeIf { editor == null }, visible) {
                     if (editor != null) {
                         // Editing: the overlay below takes the touches.
                     } else if (visible) {
                         tracker.layout = layout
-                        tracker.floating = floatingSticks
-                        tracker.areaWidth = size.width.toFloat()
-                        tracker.gameBottom =
-                            if (gameAspect != null && size.height > size.width) size.width / gameAspect else 0f
                         try {
                             awaitPointerEventScope {
                                 while (true) tracker.handle(awaitPointerEvent().changes)
@@ -314,7 +300,6 @@ private fun editorHit(layout: TouchPadLayout, position: Offset, extraRadius: Flo
     for (control in layout.controls) when (control) {
         is TouchControl.Button -> consider(control.id, control.bounds.center, max(control.bounds.width, control.bounds.height) / 2)
         is TouchControl.DPad -> consider(control.id, control.center, control.radius)
-        is TouchControl.Stick -> consider(control.id, control.center, control.radius)
     }
     for ((extra, center) in layout.extras) consider(extra.id, center, extraRadius * (layout.extraScales[extra] ?: 1f))
     return best
@@ -326,7 +311,6 @@ private fun selectionOf(layout: TouchPadLayout, id: String, extraRadius: Float):
         return when (control) {
             is TouchControl.Button -> control.bounds
             is TouchControl.DPad -> Rect(control.center, control.radius)
-            is TouchControl.Stick -> Rect(control.center, control.radius)
         }
     }
     val extra = PadExtra.entries.firstOrNull { it.id == id } ?: return null
@@ -373,19 +357,8 @@ private class TouchTracker(
 ) {
     var layout: TouchPadLayout? = null
 
-    /** Sticks that appear under a finger instead of sitting at a fixed place. */
-    var floating = false
-    var areaWidth = 0f
-
-    /** Floating sticks cannot start above this (the picture); 0 = anywhere. */
-    var gameBottom = 0f
-
-    /** Where each floating stick was put down; absent while it is not held. */
-    val floatingOrigins = mutableStateMapOf<PadStick, Offset>()
-
     var pressed by mutableStateOf(emptySet<PadButton>())
         private set
-    val sticks = mutableStateMapOf<PadStick, Offset>()
 
     private val fingers = HashMap<PointerId, Finger>()
 
@@ -393,8 +366,6 @@ private class TouchTracker(
         /** On a button; it may slide to another one, or off all of them ([button] null). */
         class OnButton(var button: PadButton?) : Finger
         class OnDPad(val dpad: TouchControl.DPad, var directions: Set<PadButton>) : Finger
-        class OnStick(val stick: TouchControl.Stick, var value: Offset) : Finger
-        class OnFloatingStick(val stick: PadStick, val origin: Offset, var value: Offset) : Finger
     }
 
     fun handle(changes: List<PointerInputChange>) {
@@ -407,13 +378,7 @@ private class TouchTracker(
                     fingers[id] = when (hit) {
                         is TouchControl.Button -> Finger.OnButton(hit.button)
                         is TouchControl.DPad -> Finger.OnDPad(hit, dpadDirections(hit, change.position))
-                        is TouchControl.Stick -> Finger.OnStick(hit, stickValue(hit, change.position))
-                        null -> {
-                            val stick = if (change.position.x < areaWidth / 2) PadStick.Left else PadStick.Right
-                            val taken = fingers.values.any { it is Finger.OnFloatingStick && it.stick == stick }
-                            if (!floating || taken || change.position.y < gameBottom) continue
-                            Finger.OnFloatingStick(stick, change.position, Offset.Zero)
-                        }
+                        null -> continue
                     }
                     change.consume()
                 }
@@ -429,13 +394,6 @@ private class TouchTracker(
                             .firstOrNull { it.contains(change.position) }?.button
                         is Finger.OnDPad ->
                             finger.directions = dpadDirections(finger.dpad, change.position)
-                        is Finger.OnStick ->
-                            finger.value = stickValue(finger.stick, change.position)
-                        is Finger.OnFloatingStick -> {
-                            val v = (change.position - finger.origin) / floatingRadius()
-                            val distance = v.getDistance()
-                            finger.value = if (distance > 1f) v / distance else v
-                        }
                     }
                     change.consume()
                 }
@@ -454,7 +412,6 @@ private class TouchTracker(
             for (finger in fingers.values) when (finger) {
                 is Finger.OnButton -> finger.button?.let(::add)
                 is Finger.OnDPad -> addAll(finger.directions)
-                is Finger.OnStick, is Finger.OnFloatingStick -> Unit
             }
         }
         if (nowPressed != pressed) {
@@ -464,20 +421,6 @@ private class TouchTracker(
             pressed = nowPressed
             if (added.isNotEmpty()) onPress()
         }
-
-        for (stick in PadStick.entries) {
-            val floatingFinger = fingers.values.firstNotNullOfOrNull {
-                (it as? Finger.OnFloatingStick)?.takeIf { f -> f.stick == stick }
-            }
-            if (floatingFinger != null) floatingOrigins[stick] = floatingFinger.origin else floatingOrigins.remove(stick)
-            val value = floatingFinger?.value ?: fingers.values.firstNotNullOfOrNull {
-                (it as? Finger.OnStick)?.takeIf { f -> f.stick.stick == stick }?.value
-            } ?: Offset.Zero
-            if (value != (sticks[stick] ?: Offset.Zero)) {
-                sticks[stick] = value
-                sink.onStick(stick, value.x, value.y)
-            }
-        }
     }
 
     private fun hitTest(controls: List<TouchControl>, position: Offset): TouchControl? =
@@ -485,7 +428,6 @@ private class TouchTracker(
             when (it) {
                 is TouchControl.Button -> it.contains(position)
                 is TouchControl.DPad -> (position - it.center).getDistance() <= it.radius * 1.15f
-                is TouchControl.Stick -> (position - it.center).getDistance() <= it.radius * 1.4f
             }
         }
 
@@ -514,15 +456,6 @@ private class TouchTracker(
         }
     }
 
-    /** How far a floating stick's finger travels for full tilt. */
-    fun floatingRadius(): Float = (layout?.unit ?: 0f) * FLOATING_RADIUS_UNITS
-
-    private fun stickValue(stick: TouchControl.Stick, position: Offset): Offset {
-        val v = (position - stick.center) / stick.radius
-        val distance = v.getDistance()
-        return if (distance > 1f) v / distance else v
-    }
-
     private companion object {
         /** cos(67.5°): beyond this a direction counts, so diagonals get 45 degrees. */
         const val DIAGONAL = 0.383f
@@ -530,9 +463,6 @@ private class TouchTracker(
 }
 
 private val MAX_UNIT = 56.dp
-
-/** The travel of a floating stick, in layout units (a fixed stick is 1.15). */
-private const val FLOATING_RADIUS_UNITS = 1.3f
 
 private val Fill = Color.White.copy(alpha = 0.16f)
 private val FillPressed = Color.White.copy(alpha = 0.45f)
@@ -560,17 +490,6 @@ private fun DrawScope.drawPad(
         fontSize = (layout.unit * 0.3f).toSp(),
         fontWeight = FontWeight.Medium,
     )
-
-    for ((stick, origin) in tracker.floatingOrigins) {
-        val radius = tracker.floatingRadius()
-        val value = tracker.sticks[stick] ?: Offset.Zero
-        val knobRadius = radius * 0.48f
-        drawCircle(Fill, radius, origin)
-        drawCircle(Outline, radius, origin, style = stroke)
-        val knob = origin + value * (radius - knobRadius)
-        drawCircle(FillPressed, knobRadius, knob)
-        drawCircle(Outline, knobRadius, knob, style = stroke)
-    }
 
     for (control in layout.controls) when (control) {
         is TouchControl.Button -> {
@@ -600,16 +519,6 @@ private fun DrawScope.drawPad(
         }
 
         is TouchControl.DPad -> drawDPad(control, pressed, stroke)
-
-        is TouchControl.Stick -> {
-            val value = tracker.sticks[control.stick] ?: Offset.Zero
-            val knobRadius = control.radius * 0.48f
-            drawCircle(Fill, control.radius, control.center)
-            drawCircle(Outline, control.radius, control.center, style = stroke)
-            val knob = control.center + value * (control.radius - knobRadius)
-            drawCircle(if (value != Offset.Zero) FillPressed else Fill, knobRadius, knob)
-            drawCircle(Outline, knobRadius, knob, style = stroke)
-        }
     }
 }
 
@@ -655,7 +564,6 @@ private fun TouchPadPreview() {
     TouchPad(
         sink = object : PadSink {
             override fun onButton(button: PadButton, pressed: Boolean) = Unit
-            override fun onStick(stick: PadStick, x: Float, y: Float) = Unit
         },
         visible = true,
         onShowRequest = {},

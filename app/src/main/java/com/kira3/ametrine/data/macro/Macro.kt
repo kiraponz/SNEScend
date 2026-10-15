@@ -5,9 +5,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
 
 /**
- * One recorded input: at frame [t] from the start, either [button] goes down ([pressed], at
- * [value] of full pressure) or up, or [stick] moves to ([x], [y]). The names are the
- * [com.kira3.ametrine.emucore.PadButton] and [com.kira3.ametrine.emucore.PadStick] entries.
+ * One recorded input: at frame [t] from the start, [button] goes down ([pressed], at [value]
+ * of full pressure) or up. The names are the [com.kira3.ametrine.emucore.PadButton] entries.
  */
 @Serializable
 data class MacroEvent(
@@ -15,9 +14,6 @@ data class MacroEvent(
     val button: String? = null,
     val pressed: Boolean = false,
     val value: Float = 1f,
-    val stick: String? = null,
-    val x: Float = 0f,
-    val y: Float = 0f,
 )
 
 /**

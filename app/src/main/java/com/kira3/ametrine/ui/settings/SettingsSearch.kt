@@ -80,7 +80,6 @@ internal fun searchSettings(resources: Resources, query: String, visible: (Setti
 fun SettingsSearchScreen(
     serial: String?,
     gameTitle: String?,
-    onOpenGpuDriver: () -> Unit,
     onOpenBios: () -> Unit,
     onOpenMemoryCards: () -> Unit,
     onBack: () -> Unit,
@@ -98,11 +97,10 @@ fun SettingsSearchScreen(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     val context = LocalContext.current
-    val actions = remember(viewModel, onOpenGpuDriver, onOpenBios, onOpenMemoryCards) {
+    val actions = remember(viewModel, onOpenBios, onOpenMemoryCards) {
         object : SettingsActions {
             override fun set(path: String, value: Any) = viewModel.set(path, value)
             override fun reset(path: String) = viewModel.reset(listOf(path))
-            override fun openGpuDriver() = onOpenGpuDriver()
             override fun openBios() = onOpenBios()
             override fun openMemoryCards() = onOpenMemoryCards()
             override fun openPadLayout() = context.startActivity(EmulationActivity.padLayoutIntent(context, viewModel.serial))

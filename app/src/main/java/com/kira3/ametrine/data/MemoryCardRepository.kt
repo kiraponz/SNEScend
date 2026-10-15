@@ -1,7 +1,6 @@
 package com.kira3.ametrine.data
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.net.Uri
 import com.kira3.ametrine.emucore.EmulatorCore
 import kotlinx.coroutines.Dispatchers
@@ -20,9 +19,6 @@ data class MemoryCard(
     /** The game the save belongs to. */
     val serial: String get() = name.substringBeforeLast('.')
 }
-
-/** A save that has an icon. SNES saves have none, so there are never any. */
-class SaveIconChoice(val cardName: String, val saveName: String, val title: String?, val icon: Bitmap)
 
 enum class MemoryCardResult { Ok, Exists, Invalid, Failed, Full, Busy }
 
@@ -94,14 +90,6 @@ class MemoryCardRepository(
         changed()
         result
     }
-
-    /** The icons of the games' saves. SNES saves have none. */
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun saveIcons(size: Int, fill: Float, serial: String? = null): List<SaveIconChoice> = emptyList()
-
-    /** The icon of one save. SNES saves have none. */
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun saveIcon(cardName: String, saveName: String, size: Int, fill: Float): Bitmap? = null
 
     /** Whether a game is running in the emulation process, which writes its save when it stops. */
     private fun gameRunning(): Boolean = isGameProcessRunning(appContext)

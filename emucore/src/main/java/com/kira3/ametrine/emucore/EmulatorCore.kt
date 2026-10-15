@@ -3,7 +3,6 @@ package com.kira3.ametrine.emucore
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.system.Os
 import android.util.Log
 import android.view.Surface
 import com.kira3.ametrine.emucore.settings.CoreKeys
@@ -241,22 +240,6 @@ class EmulatorCore(context: Context) {
     // ---- VM ----
 
     /**
-     * The Vulkan driver the next boot loads: [driver], or the system driver when null.
-     * [ubwcFlagHint] turns on Turnip's UBWC flag hint, which recent Turnip builds need on
-     * Adreno 740 to draw correctly; other drivers ignore it. Call before [runVm].
-     *
-     * The core only uses the system driver; the custom driver is not offered.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun useVulkanDriver(driver: VulkanDriver?, ubwcFlagHint: Boolean) {
-        // Mesa reads its options from the environment each time it creates a device.
-        runCatching {
-            if (ubwcFlagHint) Os.setenv("FD_DEV_FEATURES", "enable_tp_ubwc_flag_hint=1", true)
-            else Os.unsetenv("FD_DEV_FEATURES")
-        }
-    }
-
-    /**
      * Boots [gameUri] (a content:// URI the app holds read permission for, or "" for the BIOS
      * alone) and runs it until the VM shuts down. Blocks; call it on a dedicated emulation
      * thread.
@@ -432,9 +415,6 @@ class EmulatorCore(context: Context) {
     /** Frames the game has run (the core's own count). A load state sets it back. */
     val frameCount: Long get() = NativeCore.getFrameNumber()
 
-    /** Why the custom driver set by [useVulkanDriver] did not open, once the VM is up; null if it did or none was set. */
-    val customDriverFailure: String? get() = null
-
     /** The unsigned little-endian number of [size] (1, 2 or 4) bytes at [address], or null if it cannot be read. */
     fun readValue(address: Int, size: Int): Long? {
         val bytes = readMemory(address, size) ?: return null
@@ -484,10 +464,9 @@ class EmulatorCore(context: Context) {
 
     // ---- Input ----
 
-    /** Hears every press and stick move sent below, on the thread that sent it. For recording. */
+    /** Hears every press sent below, on the thread that sent it. For recording. */
     interface PadListener {
         fun onButton(port: Int, button: PadButton, pressed: Boolean, pressure: Float)
-        fun onStick(port: Int, stick: PadStick, x: Float, y: Float)
     }
 
     @Volatile
@@ -501,16 +480,6 @@ class EmulatorCore(context: Context) {
     fun setPadButton(port: Int, button: PadButton, pressed: Boolean, pressure: Float = 1f) {
         padListener?.onButton(port, button, pressed, pressure)
         NativeCore.setPadBind(port, button.code, if (pressed) 1f else 0f)
-    }
-
-    /**
-     * Moves [stick] on [port] to ([x], [y]), each -1..1 with +x right and +y down. Shape the
-     * input (deadzone) before calling; this sends it as is. The game only reads the sticks once
-     * the pad is in analog mode ([PadButton.Analog]).
-     */
-    fun setPadStick(port: Int, stick: PadStick, x: Float, y: Float) {
-        padListener?.onStick(port, stick, x, y)
-        NativeCore.setPadStick(port, stick == PadStick.Right, x, y)
     }
 
     companion object {

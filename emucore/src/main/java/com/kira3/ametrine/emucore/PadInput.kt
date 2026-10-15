@@ -15,9 +15,3 @@ enum class PadButton(internal val code: Int) {
     Start(7),
     Select(6),
 }
-
-/** An analog stick. The SNES pad has none; a physical controller's left stick works as the D-pad. */
-enum class PadStick {
-    Left,
-    Right,
-}

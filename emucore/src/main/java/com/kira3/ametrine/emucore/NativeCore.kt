@@ -9,7 +9,7 @@ import android.view.Surface
  * the callbacks at the bottom by name, so the class name and members must not change
  * (consumer-rules.pro keeps them).
  *
- * The functions keep the frontend's signatures; what the SNES has no use for (discs, sticks,
+ * The functions keep the frontend's signatures; what the SNES has no use for (discs,
  * memory cards, a BIOS) answers as a core without it would.
  *
  * Use [EmulatorCore] instead of calling this directly.
@@ -89,9 +89,6 @@ internal object NativeCore {
 
     /** Sets button [index] (a [PadButton.code]) of the pad in [port] to [value] (0..1). */
     @JvmStatic fun setPadBind(port: Int, index: Int, value: Float) = nativeSetPadBind(port, index, value)
-
-    /** The SNES pad has no sticks. */
-    @JvmStatic fun setPadStick(port: Int, right: Boolean, x: Float, y: Float) = Unit
 
     @JvmStatic fun setFastForward(enabled: Boolean) = nativeSetFastForward(enabled)
 

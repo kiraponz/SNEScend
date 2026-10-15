@@ -6,9 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -20,7 +18,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -284,7 +281,6 @@ fun SettingsCategoryScreen(
     category: SettingsCategory,
     serial: String?,
     gameTitle: String?,
-    onOpenGpuDriver: () -> Unit,
     onOpenBios: () -> Unit,
     onOpenMemoryCards: () -> Unit,
     onBack: () -> Unit,
@@ -300,11 +296,10 @@ fun SettingsCategoryScreen(
     val overridden = state?.overrides.orEmpty().filter { it in category.paths }
 
     val context = LocalContext.current
-    val actions = remember(viewModel, onOpenGpuDriver, onOpenBios, onOpenMemoryCards) {
+    val actions = remember(viewModel, onOpenBios, onOpenMemoryCards) {
         object : SettingsActions {
             override fun set(path: String, value: Any) = viewModel.set(path, value)
             override fun reset(path: String) = viewModel.reset(listOf(path))
-            override fun openGpuDriver() = onOpenGpuDriver()
             override fun openBios() = onOpenBios()
             override fun openMemoryCards() = onOpenMemoryCards()
             override fun openPadLayout() = context.startActivity(EmulationActivity.padLayoutIntent(context, viewModel.serial))

@@ -5,7 +5,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import com.kira3.ametrine.data.ControlEdit
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 import kotlin.math.min
 
 /** One control on the touch pad, in pixels of the pad's area. */
@@ -14,8 +13,6 @@ internal sealed interface TouchControl {
     data class Button(val button: PadButton, val bounds: Rect, val round: Boolean, val scale: Float = 1f) : TouchControl
 
     data class DPad(val center: Offset, val radius: Float) : TouchControl
-
-    data class Stick(val stick: PadStick, val center: Offset, val radius: Float) : TouchControl
 }
 
 /** The buttons the pad does not draw itself: the caller supplies them and the layout says where they go. */
@@ -32,7 +29,6 @@ internal val TouchControl.id: String
     get() = when (this) {
         is TouchControl.Button -> "btn.${button.name}"
         is TouchControl.DPad -> "dpad"
-        is TouchControl.Stick -> "stick.${stick.name}"
     }
 
 /**
@@ -45,16 +41,12 @@ internal class TouchPadLayout(
     val extras: Map<PadExtra, Offset>,
     val extraScales: Map<PadExtra, Float> = emptyMap(),
 ) {
-    /** The same pad without the drawn sticks, for sticks that appear under a finger. */
-    fun withoutSticks() = TouchPadLayout(unit, controls.filter { it !is TouchControl.Stick }, extras, extraScales)
-
     /** The center of the control with this [id] (a [TouchControl.id] or a [PadExtra.id]), if the layout has it. */
     fun centerOf(id: String): Offset? =
         controls.firstOrNull { it.id == id }?.let {
             when (it) {
                 is TouchControl.Button -> it.bounds.center
                 is TouchControl.DPad -> it.center
-                is TouchControl.Stick -> it.center
             }
         } ?: PadExtra.entries.firstOrNull { it.id == id }?.let { extras[it] }
 
@@ -76,7 +68,6 @@ internal class TouchPadLayout(
                         control.copy(bounds = bounds, scale = s)
                     }
                     is TouchControl.DPad -> control.copy(center = control.center + shift(edit), radius = control.radius * s)
-                    is TouchControl.Stick -> control.copy(center = control.center + shift(edit), radius = control.radius * s)
                 }
             },
             extras.mapValues { (extra, center) -> edits[extra.id]?.let { center + shift(it) } ?: center },

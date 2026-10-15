@@ -24,7 +24,6 @@ import com.kira3.ametrine.ui.memcards.MemoryCardsScreen
 import com.kira3.ametrine.ui.library.LibraryScreen
 import com.kira3.ametrine.ui.settings.CheatGamesScreen
 import com.kira3.ametrine.ui.settings.CheatsScreen
-import com.kira3.ametrine.ui.settings.GpuDriverScreen
 import com.kira3.ametrine.ui.settings.MacrosScreen
 import com.kira3.ametrine.ui.settings.SettingsCategoryScreen
 import com.kira3.ametrine.ui.settings.SettingsDetailPlaceholder
@@ -44,7 +43,7 @@ fun AmetrineApp() {
     // Beside the settings list, opening something replaces what is open in the detail pane.
     fun openDetail(route: NavKey) {
         val last = backStack.lastOrNull()
-        if (last is SettingsCategoryRoute || last is SettingsSearchRoute || last is GpuDriverRoute || last is BiosRoute || last is MemoryCardsRoute || last is CheatsRoute || last is CheatGamesRoute || last is MacrosRoute || last is MacroGamesRoute || last is BackupRoute || last is SaveStatesRoute || last is AboutRoute || last is LicensesRoute || last is LicenseRoute) {
+        if (last is SettingsCategoryRoute || last is SettingsSearchRoute || last is BiosRoute || last is MemoryCardsRoute || last is CheatsRoute || last is CheatGamesRoute || last is MacrosRoute || last is MacroGamesRoute || last is BackupRoute || last is SaveStatesRoute || last is AboutRoute || last is LicensesRoute || last is LicenseRoute) {
             while (backStack.lastOrNull() !is SettingsRoute) backStack.removeLastOrNull()
         }
         backStack.add(route)
@@ -122,7 +121,6 @@ fun AmetrineApp() {
                     category = route.category,
                     serial = route.serial,
                     gameTitle = route.gameTitle,
-                    onOpenGpuDriver = { backStack.add(GpuDriverRoute(route.serial, route.gameTitle)) },
                     onOpenBios = { openDetail(BiosRoute) },
                     onOpenMemoryCards = { openDetail(MemoryCardsRoute) },
                     onBack = { backStack.removeLastOrNull() },
@@ -136,7 +134,6 @@ fun AmetrineApp() {
                 SettingsSearchScreen(
                     serial = route.serial,
                     gameTitle = route.gameTitle,
-                    onOpenGpuDriver = { backStack.add(GpuDriverRoute(route.serial, route.gameTitle)) },
                     onOpenBios = { openDetail(BiosRoute) },
                     onOpenMemoryCards = { openDetail(MemoryCardsRoute) },
                     onBack = { backStack.removeLastOrNull() },
@@ -215,17 +212,6 @@ fun AmetrineApp() {
                 metadata = { ListDetailSceneStrategy.detailPane(sceneKey = SettingsRoute()) },
             ) { route ->
                 LicenseScreen(id = route.id, onBack = { backStack.removeLastOrNull() })
-            }
-            entry<GpuDriverRoute>(
-                metadata = { route ->
-                    ListDetailSceneStrategy.detailPane(sceneKey = SettingsRoute(route.serial, route.gameTitle))
-                },
-            ) { route ->
-                GpuDriverScreen(
-                    serial = route.serial,
-                    gameTitle = route.gameTitle,
-                    onBack = { backStack.removeLastOrNull() },
-                )
             }
         },
     )

@@ -6,7 +6,5 @@ object SettingsEffects {
     val appliesOnNextBoot: Set<String> = setOf(
         "console.region",
         "console.ramPowerOnState",
-        "output.customDriverId",
-        "output.turnipUbwcHint",
     )
 }

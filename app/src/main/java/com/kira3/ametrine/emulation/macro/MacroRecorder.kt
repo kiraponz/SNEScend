@@ -6,8 +6,6 @@ import com.kira3.ametrine.data.macro.MacroWait
 import com.kira3.ametrine.data.macro.MemoryCondition
 import com.kira3.ametrine.emucore.EmulatorCore
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
-import kotlin.math.roundToInt
 
 /**
  * Records what is sent to the pad of [port] while it runs, from the touch pad and a controller
@@ -20,7 +18,6 @@ class MacroRecorder(private val core: EmulatorCore, private val port: Int) {
     private var lastFrame = 0L
     private var frame = 0L
     private val down = HashMap<PadButton, Float>()
-    private val moved = HashSet<PadStick>()
     private var running = false
 
     /** Inputs recorded so far, for the on-screen counter. */
@@ -35,16 +32,6 @@ class MacroRecorder(private val core: EmulatorCore, private val port: Int) {
                 add(MacroEvent(t = 0, button = button.name, pressed = pressed, value = pressure))
             }
         }
-
-        override fun onStick(port: Int, stick: PadStick, x: Float, y: Float) {
-            if (port != this@MacroRecorder.port) return
-            synchronized(events) {
-                val centered = x == 0f && y == 0f
-                if (centered && stick !in moved) return
-                if (centered) moved.remove(stick) else moved.add(stick)
-                add(MacroEvent(t = 0, stick = stick.name, x = round(x), y = round(y)))
-            }
-        }
     }
 
     fun start() {
@@ -52,7 +39,6 @@ class MacroRecorder(private val core: EmulatorCore, private val port: Int) {
             events.clear()
             waits.clear()
             down.clear()
-            moved.clear()
             firstAt = 0L
             lastFrame = core.frameCount
             frame = 0L
@@ -78,7 +64,6 @@ class MacroRecorder(private val core: EmulatorCore, private val port: Int) {
             if (events.isEmpty()) return null
             val end = maxOf(events.last().t, waits.lastOrNull()?.t ?: 0L, elapsed() - TAIL_FRAMES)
             for (button in down.keys) events += MacroEvent(t = end, button = button.name, pressed = false)
-            for (stick in moved) events += MacroEvent(t = end, stick = stick.name)
             return Macro(id, name, end, events.toList(), frames = true, waits = waits.toList())
         }
     }
@@ -103,8 +88,6 @@ class MacroRecorder(private val core: EmulatorCore, private val port: Int) {
         lastFrame = now
         return frame
     }
-
-    private fun round(v: Float) = (v * 1000).roundToInt() / 1000f
 
     private companion object {
         const val TAIL_FRAMES = 24L

@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
-import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -233,13 +232,13 @@ class LibraryRepository(
      * disc if null). False if the launcher can't pin shortcuts. The shortcut keeps working as long
      * as the game folder's access does.
      */
-    fun requestPinnedShortcut(game: Game, serial: String?, icon: Bitmap?): Boolean {
+    fun requestPinnedShortcut(game: Game, serial: String?): Boolean {
         val manager = appContext.getSystemService(ShortcutManager::class.java)
         if (manager == null || !manager.isRequestPinShortcutSupported) return false
         val shortcut = ShortcutInfo.Builder(appContext, "game:${game.recordKey}")
             .setShortLabel(game.title)
             .setLongLabel(game.title)
-            .setIcon(icon?.let(Icon::createWithAdaptiveBitmap) ?: Icon.createWithResource(appContext, R.drawable.ic_shortcut_disc))
+            .setIcon(Icon.createWithResource(appContext, R.drawable.ic_shortcut_disc))
             .setIntent(EmulationActivity.shortcutIntent(appContext, game.uri, serial))
             .build()
         return manager.requestPinShortcut(shortcut, null)

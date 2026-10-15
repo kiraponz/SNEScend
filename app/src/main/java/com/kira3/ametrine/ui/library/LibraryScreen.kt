@@ -5,16 +5,11 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import com.kira3.ametrine.ui.components.DiscItem
 import com.kira3.ametrine.ui.components.DiscSheet
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +57,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -81,7 +75,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kira3.ametrine.R
 import com.kira3.ametrine.data.Game
-import com.kira3.ametrine.data.SaveIconChoice
 import com.kira3.ametrine.emulation.EmulationActivity
 import com.kira3.ametrine.ui.theme.AmetrineTheme
 
@@ -145,8 +138,6 @@ fun LibraryScreen(
         onDiscardConfirmed = viewModel::onDiscardConfirmed,
         onDiscardDismissed = viewModel::onDiscardDismissed,
         onAddShortcut = viewModel::onAddShortcutClicked,
-        onShortcutIconChosen = viewModel::onShortcutIconChosen,
-        onShortcutIconDismissed = viewModel::onShortcutIconDismissed,
     )
 }
 
@@ -176,8 +167,6 @@ private fun LibraryContent(
     onDiscardConfirmed: () -> Unit,
     onDiscardDismissed: () -> Unit,
     onAddShortcut: (Game) -> Unit,
-    onShortcutIconChosen: (SaveIconChoice?) -> Unit,
-    onShortcutIconDismissed: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
@@ -205,9 +194,6 @@ private fun LibraryContent(
             },
             dismissButton = { TextButton(onClick = onDiscardDismissed) { Text(stringResource(R.string.settings_cancel)) } },
         )
-    }
-    state.shortcutIconRequest?.let { request ->
-        ShortcutIconDialog(request, onChosen = onShortcutIconChosen, onDismiss = onShortcutIconDismissed)
     }
     renaming?.let { game ->
         RenameDialog(
@@ -447,44 +433,6 @@ private fun GameRow(
     }
 }
 
-/** Asks which save's icon the shortcut gets, for a game that has no save of its own. */
-@Composable
-private fun ShortcutIconDialog(request: ShortcutIconRequest, onChosen: (SaveIconChoice?) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_shortcut_icon_title)) },
-        text = {
-            LazyColumn {
-                item(key = "app-icon") {
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.library_shortcut_icon_disc)) },
-                        leadingContent = {
-                            Image(
-                                painterResource(R.drawable.ic_disc),
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                            )
-                        },
-                        modifier = Modifier.clickable { onChosen(null) },
-                    )
-                }
-                items(request.choices, key = { "${it.cardName}/${it.saveName}" }) { choice ->
-                    ListItem(
-                        headlineContent = { Text(choice.title ?: choice.saveName, maxLines = 2) },
-                        supportingContent = { Text(choice.cardName, maxLines = 1) },
-                        leadingContent = {
-                            Image(choice.icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(48.dp))
-                        },
-                        modifier = Modifier.clickable { onChosen(choice) },
-                    )
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.library_shortcut_icon_cancel)) } },
-    )
-}
-
 /** The discs of a game, the one a tap starts marked; picking one starts the game from it. */
 @Composable
 private fun DiscDialog(entry: LibraryEntry, onPick: (Game) -> Unit, onDismiss: () -> Unit) {
@@ -621,8 +569,6 @@ private fun LibraryContentPreview() {
             onDiscardConfirmed = {},
             onDiscardDismissed = {},
             onAddShortcut = {},
-            onShortcutIconChosen = {},
-            onShortcutIconDismissed = {},
         )
     }
 }

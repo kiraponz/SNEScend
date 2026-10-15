@@ -5,7 +5,6 @@ import com.kira3.ametrine.data.macro.MacroWait
 import com.kira3.ametrine.data.macro.MemoryCondition
 import com.kira3.ametrine.emucore.EmulatorCore
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,7 +32,6 @@ class MacroPlayer(private val core: EmulatorCore, private val port: Int, private
 
     private var job: Job? = null
     private val held = HashSet<PadButton>()
-    private val sticks = HashSet<PadStick>()
 
     fun play(macro: Macro) {
         stop()
@@ -101,22 +99,14 @@ class MacroPlayer(private val core: EmulatorCore, private val port: Int, private
     }
 
     private fun send(e: com.kira3.ametrine.data.macro.MacroEvent) {
-        val button = e.button?.let { name -> PadButton.entries.firstOrNull { it.name == name } }
-        if (button != null) {
-            if (e.pressed) held += button else held -= button
-            core.setPadButton(port, button, e.pressed, e.value)
-            return
-        }
-        val stick = e.stick?.let { name -> PadStick.entries.firstOrNull { it.name == name } } ?: return
-        if (e.x != 0f || e.y != 0f) sticks += stick else sticks -= stick
-        core.setPadStick(port, stick, e.x, e.y)
+        val button = e.button?.let { name -> PadButton.entries.firstOrNull { it.name == name } } ?: return
+        if (e.pressed) held += button else held -= button
+        core.setPadButton(port, button, e.pressed, e.value)
     }
 
     private fun releaseAll() {
         for (b in held) core.setPadButton(port, b, false)
         held.clear()
-        for (s in sticks) core.setPadStick(port, s, 0f, 0f)
-        sticks.clear()
     }
 
     private fun stopMet(macro: Macro) = macro.stopWhen?.let { holds(it) } == true

@@ -9,7 +9,6 @@ import com.kira3.ametrine.data.BiosRepository
 import com.kira3.ametrine.data.CheatRepository
 import com.kira3.ametrine.data.MacroRepository
 import com.kira3.ametrine.data.PadLayoutRepository
-import com.kira3.ametrine.data.DriverRepository
 import com.kira3.ametrine.data.GameRecordRepository
 import com.kira3.ametrine.data.GeminiKeyStore
 import com.kira3.ametrine.data.LibraryRepository
@@ -46,5 +45,4 @@ class AppContainer(context: Context) {
     val backupRepository: BackupRepository by lazy {
         BackupRepository(appContext, emulatorCore, settingsRepository, gameRecordRepository, memoryCardRepository)
     }
-    val driverRepository: DriverRepository by lazy { DriverRepository(appContext) }
 }

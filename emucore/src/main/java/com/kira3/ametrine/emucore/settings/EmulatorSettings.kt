@@ -100,7 +100,7 @@ data class OsdSettings(
     val showFps: Boolean = false,
 )
 
-/** The play screen. App side, apart from [customDriverId]. */
+/** The play screen. App side. */
 @Serializable
 data class OutputSettings(
     /** Output surface size: 0 = screen, else n x 448 lines on the short side. */
@@ -111,10 +111,6 @@ data class OutputSettings(
     val orientation: Int = 0,
     /** In portrait, align the picture to the top (true) instead of centering it. */
     val portraitRenderTop: Boolean = true,
-    /** Installed custom Vulkan driver (e.g. Turnip) to load, or "" for the system driver. Applies on the next boot. */
-    val customDriverId: String = "",
-    /** Turnip's UBWC flag hint (FD_DEV_FEATURES), for glitches on Adreno 740. Applies on the next boot. */
-    val turnipUbwcHint: Boolean = false,
 )
 
 /** The on-screen pad and physical controllers. App side. */

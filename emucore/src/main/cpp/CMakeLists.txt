@@ -17,11 +17,15 @@ add_library(mesen STATIC
     ${MESEN_CORE_SOURCES} ${MESEN_UTIL_SOURCES} ${MESEN_7Z_SOURCES} ${MESEN_LUA_SOURCES})
 target_include_directories(mesen PUBLIC ${MESEN_DIR} ${MESEN_DIR}/Core ${MESEN_DIR}/Utilities)
 # The emulation is slow unoptimized, so the core is built -O3 in every build type.
-target_compile_options(mesen PRIVATE -O3 -fPIC -w)
+# Each function and object in its own section, so the link can drop what nothing calls.
+target_compile_options(mesen PRIVATE -O3 -fPIC -w -ffunction-sections -fdata-sections)
 target_compile_definitions(mesen PRIVATE LUA_USE_POSIX)
 
 add_library(emucore SHARED
     jni.cpp
     android_host.cpp)
-target_compile_options(emucore PRIVATE -O2 -Wall)
+target_compile_options(emucore PRIVATE -O2 -Wall -ffunction-sections -fdata-sections)
+# Only the JNI functions are exported: MesenCE's symbols would otherwise all be kept as the
+# library's interface. ThinLTO made the library larger (7.1 MB against 7.0 MB), so it is off.
+target_link_options(emucore PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
 target_link_libraries(emucore PRIVATE mesen android log aaudio EGL GLESv2)

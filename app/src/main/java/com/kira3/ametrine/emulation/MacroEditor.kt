@@ -41,7 +41,6 @@ import com.kira3.ametrine.data.macro.MacroEvent
 import com.kira3.ametrine.data.macro.MacroWait
 import com.kira3.ametrine.data.macro.normalized
 import com.kira3.ametrine.emucore.PadButton
-import com.kira3.ametrine.emucore.PadStick
 
 /**
  * Edits a macro's inputs, wait points and length. Nothing is kept until Save. [suggestions] are
@@ -209,36 +208,23 @@ private fun frameLabel(frames: Long): String = "%d (%.2f s)".format(frames, fram
 private const val FRAMES_PER_SECOND_F = 60.0
 
 @Composable
-private fun eventLabel(e: MacroEvent): String = when {
-    e.button != null -> stringResource(
-        if (e.pressed) R.string.macro_event_pressed_desc else R.string.macro_event_released_desc,
-        e.button,
-    )
-    else -> stringResource(R.string.macro_event_stick_desc, e.stick.orEmpty(), "%.2f".format(e.x), "%.2f".format(e.y))
-}
+private fun eventLabel(e: MacroEvent): String = stringResource(
+    if (e.pressed) R.string.macro_event_pressed_desc else R.string.macro_event_released_desc,
+    e.button.orEmpty(),
+)
 
 private const val NEW = -1
 
-/** Adds or changes one recorded input: when, which button (pressed or let go) or stick (and where). */
+/** Adds or changes one recorded input: when, and which button is pressed or let go. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EventDialog(initial: MacroEvent?, onDismiss: () -> Unit, onSave: (MacroEvent) -> Unit) {
     var frame by remember { mutableStateOf((initial?.t ?: 0L).toString()) }
-    var stickMode by remember { mutableStateOf(initial?.stick != null) }
     var button by remember { mutableStateOf(PadButton.entries.firstOrNull { it.name == initial?.button } ?: PadButton.B) }
-    var pressed by remember { mutableStateOf(initial?.let { it.button == null || it.pressed } ?: true) }
-    var stick by remember { mutableStateOf(PadStick.entries.firstOrNull { it.name == initial?.stick } ?: PadStick.Left) }
-    var x by remember { mutableStateOf((initial?.x ?: 0f).toString()) }
-    var y by remember { mutableStateOf((initial?.y ?: 0f).toString()) }
+    var pressed by remember { mutableStateOf(initial?.pressed ?: true) }
 
     val t = frame.toLongOrNull()
-    val xf = x.toFloatOrNull()?.takeIf { it in -1f..1f }
-    val yf = y.toFloatOrNull()?.takeIf { it in -1f..1f }
-    val result: MacroEvent? = when {
-        t == null -> null
-        stickMode -> if (xf != null && yf != null) MacroEvent(t, stick = stick.name, x = xf, y = yf) else null
-        else -> MacroEvent(t, button = button.name, pressed = pressed, value = initial?.value ?: 1f)
-    }
+    val result: MacroEvent? = t?.let { MacroEvent(it, button = button.name, pressed = pressed, value = initial?.value ?: 1f) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.macro_editor_input_title)) },
@@ -254,40 +240,11 @@ private fun EventDialog(initial: MacroEvent?, onDismiss: () -> Unit, onSave: (Ma
                     modifier = Modifier.fillMaxWidth(),
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!stickMode, { stickMode = false }, label = { Text(stringResource(R.string.macro_event_button)) })
-                    FilterChip(stickMode, { stickMode = true }, label = { Text(stringResource(R.string.macro_event_stick)) })
+                    for (b in PadButton.entries) FilterChip(button == b, { button = b }, label = { Text(b.name) })
                 }
-                if (stickMode) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (s in PadStick.entries) FilterChip(stick == s, { stick = s }, label = { Text(s.name) })
-                    }
-                    OutlinedTextField(
-                        x,
-                        { x = it.filter { c -> c.isDigit() || c == '.' || c == '-' }.take(6) },
-                        label = { Text(stringResource(R.string.macro_event_x)) },
-                        isError = xf == null,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        y,
-                        { y = it.filter { c -> c.isDigit() || c == '.' || c == '-' }.take(6) },
-                        label = { Text(stringResource(R.string.macro_event_y)) },
-                        supportingText = { Text(stringResource(R.string.macro_event_stick_hint)) },
-                        isError = yf == null,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (b in PadButton.entries) FilterChip(button == b, { button = b }, label = { Text(b.name) })
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(pressed, { pressed = true }, label = { Text(stringResource(R.string.macro_event_pressed)) })
-                        FilterChip(!pressed, { pressed = false }, label = { Text(stringResource(R.string.macro_event_released)) })
-                    }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(pressed, { pressed = true }, label = { Text(stringResource(R.string.macro_event_pressed)) })
+                    FilterChip(!pressed, { pressed = false }, label = { Text(stringResource(R.string.macro_event_released)) })
                 }
             }
         },

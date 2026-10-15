@@ -1,6 +1,5 @@
 package com.kira3.ametrine.ui.settings
 
-import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -10,15 +9,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.kira3.ametrine.AmetrineApplication
 import com.kira3.ametrine.data.Bios
 import com.kira3.ametrine.data.BiosRepository
-import com.kira3.ametrine.data.DriverRepository
-import com.kira3.ametrine.data.GpuDriver
 import com.kira3.ametrine.data.MemoryCard
 import com.kira3.ametrine.data.MemoryCardRepository
 import com.kira3.ametrine.data.SettingsRepository
 import com.kira3.ametrine.emucore.settings.EmulatorSettings
 import com.kira3.ametrine.emucore.settings.SettingsValues
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -37,14 +33,7 @@ data class SettingsUiState(
     val bioses: List<Bios>,
     /** The memory cards the app holds, for the slots' choices. */
     val cards: List<MemoryCard>,
-    /** Installed custom Vulkan drivers. */
-    val drivers: List<GpuDriver>,
-    /** A driver pack is being installed. */
-    val installing: Boolean = false,
 )
-
-/** Results of driver management to show once. */
-enum class DriverMessage { Installed, NotADriver }
 
 /** The global settings when [serial] is null, else that game's settings. */
 class SettingsViewModel(
@@ -52,11 +41,7 @@ class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     biosRepository: BiosRepository,
     memoryCardRepository: MemoryCardRepository,
-    private val driverRepository: DriverRepository,
 ) : ViewModel() {
-    private val installing = MutableStateFlow(false)
-    private val _driverMessage = MutableStateFlow<DriverMessage?>(null)
-    val driverMessage: StateFlow<DriverMessage?> = _driverMessage
 
     private val bioses = flow {
         emit(emptyList())
@@ -77,10 +62,8 @@ class SettingsViewModel(
         settings,
         bioses,
         memoryCardRepository.cards.catch { emit(emptyList()) },
-        driverRepository.installed.catch { emit(emptyList()) },
-        installing,
-    ) { (values, overrides), bioses, cards, drivers, installing ->
-        SettingsUiState(values, overrides, bioses, cards, drivers, installing)
+    ) { (values, overrides), bioses, cards ->
+        SettingsUiState(values, overrides, bioses, cards)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun set(path: String, value: Any) = edit { SettingsValues(it).with(path, value) }
@@ -89,37 +72,6 @@ class SettingsViewModel(
     fun reset(paths: Collection<String>) {
         val serial = serial ?: return
         viewModelScope.launch { withContext(NonCancellable) { settingsRepository.resetGame(serial, paths) } }
-    }
-
-    /** Installs the driver pack at [uri] and selects it. */
-    fun installDriver(uri: Uri) {
-        viewModelScope.launch {
-            installing.value = true
-            val driver = withContext(NonCancellable) { driverRepository.install(uri) }
-            installing.value = false
-            if (driver == null) {
-                _driverMessage.value = DriverMessage.NotADriver
-            } else {
-                set(DRIVER_PATH, driver.id)
-                _driverMessage.value = DriverMessage.Installed
-            }
-        }
-    }
-
-    /** Deletes [driver]. The global settings stop using it; games that use it fall back at boot. */
-    fun deleteDriver(driver: GpuDriver) {
-        viewModelScope.launch {
-            withContext(NonCancellable) {
-                driverRepository.delete(driver)
-                settingsRepository.updateGlobal {
-                    if (it.output.customDriverId == driver.id) it.copy(output = it.output.copy(customDriverId = "")) else it
-                }
-            }
-        }
-    }
-
-    fun onDriverMessageShown() {
-        _driverMessage.value = null
     }
 
     // Saving must not be cut short when the screen closes right after a change.
@@ -133,12 +85,11 @@ class SettingsViewModel(
 
     companion object {
         private const val TAG = "SettingsViewModel"
-        const val DRIVER_PATH = "output.customDriverId"
 
         fun factory(serial: String?): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val container = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as AmetrineApplication).container
-                SettingsViewModel(serial, container.settingsRepository, container.biosRepository, container.memoryCardRepository, container.driverRepository)
+                SettingsViewModel(serial, container.settingsRepository, container.biosRepository, container.memoryCardRepository)
             }
         }
     }

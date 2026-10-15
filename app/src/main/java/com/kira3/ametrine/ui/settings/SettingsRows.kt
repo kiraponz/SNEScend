@@ -72,7 +72,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import com.kira3.ametrine.data.GpuDriver
 import com.kira3.ametrine.emucore.settings.SettingsValues
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -81,7 +80,6 @@ import kotlin.math.roundToInt
 interface SettingsActions {
     fun set(path: String, value: Any)
     fun reset(path: String)
-    fun openGpuDriver()
     fun openBios()
     fun openMemoryCards()
     fun openPadLayout()
@@ -115,7 +113,6 @@ fun SettingRow(
         is TextInput -> TextRow(row, setting, actions)
         GeminiApiKeySetting -> GeminiKeyRow(row)
         GeminiModelSetting -> GeminiModelRow(row, actions)
-        GpuDriverSetting -> GpuDriverRow(row, state, actions)
         BiosManageSetting -> BiosManageRow(row, actions)
         ControllersSetting -> ControllersRow(row)
         is KeyAssignSetting -> KeyAssignRow(row, setting, actions)
@@ -299,29 +296,6 @@ private fun BiosManageRow(row: RowParams, actions: SettingsActions) {
         trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
         supportingContent = { Supporting(BiosManageSetting) },
     ) { Text(stringResource(BiosManageSetting.title)) }
-}
-
-@Composable
-private fun GpuDriverRow(row: RowParams, state: SettingsUiState, actions: SettingsActions) {
-    SegmentedListItem(
-        onClick = actions::openGpuDriver,
-        shapes = row.shapes,
-        colors = settingsListColors(),
-        modifier = row.modifier,
-        enabled = row.enabled,
-        overlineContent = row.overline,
-        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-        supportingContent = {
-            Supporting(GpuDriverSetting, value = driverLabel(row.values.string(GpuDriverSetting.path!!), state.drivers))
-        },
-    ) { Text(stringResource(GpuDriverSetting.title)) }
-}
-
-/** The name of the driver [id] stored in the settings, as the boot will resolve it. */
-@Composable
-fun driverLabel(id: String, drivers: List<GpuDriver>): String = when {
-    id.isEmpty() -> stringResource(R.string.driver_system)
-    else -> drivers.firstOrNull { it.id == id }?.name ?: stringResource(R.string.driver_missing)
 }
 
 /** The text under a row's title: its current value, what it does, and when it takes effect. */
