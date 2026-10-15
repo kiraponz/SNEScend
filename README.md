@@ -2,7 +2,7 @@
 
 A Super Nintendo (SNES / Super Famicom) emulator for Android, built on the SNES core of
 [MesenCE](https://github.com/nesdev-org/MesenCE), with the frontend of
-[Aegirine](https://github.com/kiraponz/Aegirine).
+[Ametrine](https://github.com/kiraponz/Ametrine).
 
 ## Features
 
