@@ -1,0 +1,49 @@
+--- a/Core/Shared/Emulator.cpp
++++ b/Core/Shared/Emulator.cpp
+@@ -31,12 +31,16 @@
+ #include "Shared/BaseControlManager.h"
+ #include "SNES/SnesConsole.h"
+ #include "SNES/SnesDefaultVideoFilter.h"
++#ifndef MESEN_SNES_ONLY
+ #include "NES/NesConsole.h"
++#endif
+ #include "Gameboy/Gameboy.h"
++#ifndef MESEN_SNES_ONLY
+ #include "PCE/PceConsole.h"
+ #include "SMS/SmsConsole.h"
+ #include "GBA/GbaConsole.h"
+ #include "WS/WsConsole.h"
++#endif
+ #include "Debugger/Debugger.h"
+ #include "Debugger/BaseEventManager.h"
+ #include "Debugger/DebugTypes.h"
+@@ -564,6 +568,9 @@
+ 
+ void Emulator::TryLoadRom(VirtualFile& romFile, LoadRomResult& result, unique_ptr<IConsole>& console, bool useFileSignature)
+ {
++#ifdef MESEN_SNES_ONLY
++	TryLoadRom<SnesConsole>(romFile, result, console, useFileSignature);
++#else
+ 	TryLoadRom<NesConsole>(romFile, result, console, useFileSignature);
+ 	TryLoadRom<SnesConsole>(romFile, result, console, useFileSignature);
+ 	TryLoadRom<Gameboy>(romFile, result, console, useFileSignature);
+@@ -571,6 +578,7 @@
+ 	TryLoadRom<SmsConsole>(romFile, result, console, useFileSignature);
+ 	TryLoadRom<GbaConsole>(romFile, result, console, useFileSignature);
+ 	TryLoadRom<WsConsole>(romFile, result, console, useFileSignature);
++#endif
+ }
+ 
+ template<typename T>
+@@ -1072,6 +1080,11 @@
+ 
+ void Emulator::ResetDebugger(bool startDebugger)
+ {
++#ifdef MESEN_SNES_ONLY
++	//No debugger: it would pull in every console's debugger and disassembler
++	startDebugger = false;
++#endif
++
+ 	shared_ptr<Debugger> currentDbg = _debugger.lock();
+ 	if(currentDbg) {
+ 		currentDbg->SuspendDebugger(false);
