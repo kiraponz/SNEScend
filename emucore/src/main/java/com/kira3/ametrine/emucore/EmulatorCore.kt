@@ -2,6 +2,7 @@ package com.kira3.ametrine.emucore
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.system.Os
 import android.util.Log
 import android.view.Surface
@@ -21,8 +22,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The app's only way into the emulation core. Wraps [NativeCore] (a Kotlin stub in this
- * template, JNI with a real core) so the core boundary stays inside this module.
+ * The app's only way into the emulation core. Wraps [NativeCore] (MesenCE's SNES, through JNI)
+ * so the core boundary stays inside this module.
  *
  * One instance per process (the core itself is a process-wide singleton). Call
  * [initialize] once before anything else.
@@ -32,19 +33,20 @@ import java.io.File
 class EmulatorCore(context: Context) {
     private val appContext = context.applicationContext
 
-    /** Memory cards, save states, settings and the core's resources live here. */
+    /** Battery saves, save states and settings live here. */
     val dataDir: File = appContext.getExternalFilesDir(null) ?: appContext.filesDir
 
     /**
-     * The folder the core loads the BIOS from. The core opens the BIOS with plain file
-     * APIs, so a BIOS picked through SAF has to be copied in here.
+     * The folder the core loads the coprocessors' firmware from (dsp1.rom, st018.rom, BS-X.bin and
+     * the like), by the names in [Firmware]. The core opens it with plain file APIs, so a file
+     * picked through SAF has to be copied in here.
      */
-    val biosDir: File = File(dataDir, "bios")
+    val biosDir: File = File(dataDir, "firmware")
 
-    /** Where the core keeps its memory cards (128 KB `.mcd` files). */
-    val memoryCardsDir: File = File(dataDir, "memcards")
+    /** Where the core keeps the games' battery saves (`<serial>.srm`). */
+    val memoryCardsDir: File = File(dataDir, "saves")
 
-    /** The save states (`<serial>_<slot>.sav`) and the suspend states (`<serial>_resume.sav`). */
+    /** The save states (`<serial>_<slot>.mss`) and the suspend states (`<serial>_resume.mss`). */
     val saveStatesDir: File = File(dataDir, "savestates")
 
     /** Null when the native core loaded; otherwise a reason it cannot run on this device. */
@@ -81,7 +83,6 @@ class EmulatorCore(context: Context) {
 
         withContext(Dispatchers.IO) {
             biosDir.mkdirs()
-            CoreResources.install(appContext, dataDir)
 
             NativeCore.files = files
             NativeCore.listener = object : NativeCore.Listener {
@@ -108,8 +109,8 @@ class EmulatorCore(context: Context) {
     // ---- Settings ----
 
     /**
-     * Writes one value to the core's base settings layer (the same section/key names as
-     * DuckStation's INI). Changes apply on the next [commitSettings] or VM boot.
+     * Writes one value to the core's settings ("Section/Key", see android_host.cpp). Changes apply
+     * on the next [commitSettings] or VM boot.
      */
     fun setSetting(section: String, key: String, value: Boolean) =
         NativeCore.setSetting(section, key, value.toString())
@@ -188,24 +189,31 @@ class EmulatorCore(context: Context) {
     // ---- BIOS and games ----
 
     /**
-     * Reads BIOS metadata from [uri], or null if it is not a 512 KB PS1 BIOS. A BIOS the core's
-     * list does not know has [BiosRegion.Unknown]. Blocking I/O.
+     * What firmware the file at [uri] is, from its name and size, or null if it is none the core
+     * uses. [BiosMetadata.fileName] is the name the core looks for it by. Blocking I/O.
      */
     fun readBiosMetadata(uri: Uri): BiosMetadata? {
-        val fd = openFd(uri) ?: return null
-        val info = NativeCore.getBiosInfoFromFd(fd) ?: return null
-        val region = when (info.substringBefore('\t').toIntOrNull()) {
-            1 -> BiosRegion.Japan
-            2 -> BiosRegion.Usa
-            3 -> BiosRegion.Europe
-            else -> BiosRegion.Unknown
+        val (name, size) = nameAndSize(uri) ?: return null
+        val firmware = Firmware.identify(name, size) ?: return null
+        return BiosMetadata(region = BiosRegion.Unknown, description = firmware.description, fileName = firmware.fileName)
+    }
+
+    private fun nameAndSize(uri: Uri): Pair<String, Long>? = try {
+        if (uri.scheme == "file") {
+            val file = File(uri.path ?: return null)
+            file.name to file.length()
+        } else {
+            appContext.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) to it.getLong(1) else null }
         }
-        return BiosMetadata(region = region, description = info.substringAfter('\t'))
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not read $uri", e)
+        null
     }
 
     /**
-     * Reads the serial (e.g. "SLUS-00067") from a disc image, or null if it can't. The GameDB's
-     * serial when it knows the disc. Needs [initialize]. Blocking I/O.
+     * The game's serial, "SNES-" and the CRC32 of the ROM (without a copier header, out of the
+     * archive for a .zip or .7z), or null if the file can't be read. Needs [initialize]. Blocking I/O.
      */
     fun readGameSerial(uri: Uri): String? {
         val path = files.pathFor(uri) ?: return null
@@ -221,15 +229,12 @@ class EmulatorCore(context: Context) {
      */
     fun setCheats(cheats: List<Cheat>) {
         val enabled = cheats.filter { it.enabled }
-            .map { it.name to GameShark.check(it.code).lines.joinToString("\n") }
+            .map { it.name to SnesCodes.check(it.code).lines.filter(NativeCore::isValidCheat).joinToString("\n") }
             .filter { it.second.isNotEmpty() }
         NativeCore.setCheats(enabled.map { it.first }.toTypedArray(), enabled.map { it.second }.toTypedArray())
     }
 
-    /**
-     * The cheats in a cheat file's [text] (the PCSXR, libretro and ePSXe formats), all off, each
-     * with an id from [newId]. Empty if it has none.
-     */
+    /** The cheats in a cheat file's [text] (libretro's .cht), all off, each with an id from [newId]. Empty if it has none. */
     fun parseCheatFile(text: String, newId: () -> String): List<Cheat> =
         NativeCore.parseCheats(text).toCheats(newId)
 
@@ -241,14 +246,6 @@ class EmulatorCore(context: Context) {
 
     private fun Array<String>?.toCheats(newId: () -> String): List<Cheat> =
         orEmpty().toList().chunked(2).filter { it.size == 2 }.map { (name, code) -> Cheat(newId(), name, code.trim()) }
-
-    /** Opens [uri] and detaches the fd; the core takes ownership and closes it. */
-    private fun openFd(uri: Uri): Int? = try {
-        appContext.contentResolver.openFileDescriptor(uri, "r")?.detachFd()
-    } catch (e: Exception) {
-        Log.w(TAG, "Could not open $uri", e)
-        null
-    }
 
     // ---- VM ----
 
@@ -320,7 +317,7 @@ class EmulatorCore(context: Context) {
 
     /** The file of [slot] (-1 for the suspend state) of the game with [serial], named as the core names it. */
     fun saveStateFile(serial: String, slot: Int): File =
-        File(saveStatesDir, if (slot < 0) "${serial}_resume.sav" else "${serial}_$slot.sav")
+        File(saveStatesDir, if (slot < 0) "${serial}_resume.mss" else "${serial}_$slot.mss")
 
     /** Saves the running game to [slot]. Blocks until the state is written. */
     fun saveState(slot: Int): Boolean = saveStateTo(slot)
@@ -526,13 +523,10 @@ class EmulatorCore(context: Context) {
     }
 
     companion object {
-        /**
-         * Size of the main RAM the memory search covers. With the 8 MB RAM setting, [readMemory]
-         * reaches further, but games made for the PS1 only use the first 2 MB.
-         */
-        const val MAIN_RAM_BYTES = 2 * 1024 * 1024
+        /** Size of the work RAM (WRAM, $7E0000-$7FFFFF) the memory search covers. */
+        const val MAIN_RAM_BYTES = 128 * 1024
 
-        private const val RESUME_SUFFIX = "_resume.sav"
+        private const val RESUME_SUFFIX = "_resume.mss"
 
         /** The save-state slots, as the core numbers them. */
         val SAVE_STATE_SLOTS: IntRange = 1..10

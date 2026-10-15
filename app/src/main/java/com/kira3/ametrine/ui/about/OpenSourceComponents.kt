@@ -47,14 +47,14 @@ val openSourceComponents: Map<ComponentGroup, List<OpenSourceComponent>> = mapOf
 )
 
 /** Where this app's source is published. */
-const val SOURCE_URL = "https://github.com/kiraponz/EmuFrontend"
+const val SOURCE_URL = "https://github.com/kiraponz/SNEScend"
 
 /** The core's source at [commit], kept so the core's source stays available. Null without a core repository. */
 fun coreSourceUrl(commit: String): String? = null
 
 /** This app itself, for its own license from About. */
 val ametrineComponent = OpenSourceComponent(
-    "emufrontend", "EmuFrontend", "GPL-3.0", SOURCE_URL, listOf("gpl-3.0.txt"),
+    "snescend", "SNEScend", "GPL-3.0", SOURCE_URL, listOf("gpl-3.0.txt"),
     notice = "Copyright 2026 Kira",
 )
 

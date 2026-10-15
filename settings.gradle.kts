@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EmuFrontend"
+rootProject.name = "SNEScend"
 include(":app")
 include(":emucore")

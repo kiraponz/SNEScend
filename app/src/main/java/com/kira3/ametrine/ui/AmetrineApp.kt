@@ -66,11 +66,6 @@ fun AmetrineApp() {
             entry<LibraryRoute> {
                 LibraryScreen(
                     onOpenSettings = { backStack.add(SettingsRoute()) },
-                    // The BIOS files are managed from the settings.
-                    onOpenBios = {
-                        backStack.add(SettingsRoute())
-                        backStack.add(BiosRoute)
-                    },
                     onOpenGameSettings = { serial, title -> backStack.add(SettingsRoute(serial, title)) },
                 )
             }

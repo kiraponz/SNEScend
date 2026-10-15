@@ -453,11 +453,6 @@ class EmulationActivity : ComponentActivity() {
         val settings = container.settingsRepository
         val overrides = serial?.let { settings.loadOverrides(it) } ?: SettingsOverrides()
         val global = settings.loadGlobal()
-        // The core picks a BIOS for the game's region (or the game's own, from its settings).
-        if (withContext(Dispatchers.IO) { container.biosRepository.installed().isEmpty() }) {
-            finishWithMessage(getString(R.string.emulation_bios_missing))
-            return false
-        }
         apply(global, overrides)
         applyEmulationOrientation()
         applyOutputScale()

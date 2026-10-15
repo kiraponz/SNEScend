@@ -9,8 +9,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.kira3.ametrine.AmetrineApplication
-import com.kira3.ametrine.data.Bios
-import com.kira3.ametrine.data.BiosRepository
 import com.kira3.ametrine.data.Game
 import com.kira3.ametrine.data.LibraryRepository
 import com.kira3.ametrine.data.LibrarySort
@@ -37,7 +35,6 @@ class LibraryEntry(val game: Game, val discs: List<Game>, val key: String) {
 }
 
 data class LibraryUiState(
-    val bios: Bios? = null,
     val hasGameFolder: Boolean = false,
     /** Null until the cached list has been read. */
     val games: List<LibraryEntry>? = null,
@@ -59,10 +56,9 @@ data class LibraryUiState(
 /** The game has no save of its own to take the shortcut's icon from: [choices] are the saves to pick one from. */
 class ShortcutIconRequest(val game: Game, val serial: String?, val choices: List<SaveIconChoice>)
 
-enum class LibraryMessage { ScanFailed, BiosRequired, CoreUnavailable, NoSerial, ShortcutUnsupported }
+enum class LibraryMessage { ScanFailed, CoreUnavailable, NoSerial, ShortcutUnsupported }
 
 class LibraryViewModel(
-    biosRepository: BiosRepository,
     private val libraryRepository: LibraryRepository,
     private val memoryCardRepository: MemoryCardRepository,
 ) : ViewModel() {
@@ -106,14 +102,12 @@ class LibraryViewModel(
     private class Shown(val games: List<LibraryEntry>, val unrecognized: List<Game>, val count: Int, val sort: LibrarySort)
 
     val uiState: StateFlow<LibraryUiState> = combine(
-        biosRepository.available.catch { emit(null) },
         libraryRepository.gameFolder,
         shown,
         libraryRepository.refreshing,
         transient,
-    ) { bios, folder, shown, refreshing, transient ->
+    ) { folder, shown, refreshing, transient ->
         transient.copy(
-            bios = bios,
             hasGameFolder = folder != null,
             games = shown.games,
             unrecognized = shown.unrecognized,
@@ -165,10 +159,6 @@ class LibraryViewModel(
     }
 
     fun onGameClicked(game: Game) {
-        if (uiState.value.bios == null) {
-            showMessage(LibraryMessage.BiosRequired)
-            return
-        }
         viewModelScope.launch {
             readSerial(game) ?: return@launch
             runCatching { libraryRepository.markPlayed(game) }
@@ -196,16 +186,6 @@ class LibraryViewModel(
     }
 
     fun onDiscardDismissed() = transient.update { it.copy(discardRequest = null) }
-
-    /** Starts the BIOS itself, with no disc: the PS2 system menu. */
-    fun onBootBiosClicked() {
-        if (uiState.value.bios == null) {
-            showMessage(LibraryMessage.BiosRequired)
-            return
-        }
-        // An empty URI reaches the core as an empty path, which it boots as BIOS only.
-        transient.update { it.copy(launchRequest = LaunchRequest(Uri.EMPTY, null)) }
-    }
 
     fun onAddShortcutClicked(game: Game) {
         viewModelScope.launch {
@@ -295,7 +275,7 @@ class LibraryViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val container = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as AmetrineApplication).container
-                LibraryViewModel(container.biosRepository, container.libraryRepository, container.memoryCardRepository)
+                LibraryViewModel(container.libraryRepository, container.memoryCardRepository)
             }
         }
     }

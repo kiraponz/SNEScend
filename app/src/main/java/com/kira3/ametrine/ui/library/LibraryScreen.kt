@@ -88,7 +88,6 @@ import com.kira3.ametrine.ui.theme.AmetrineTheme
 @Composable
 fun LibraryScreen(
     onOpenSettings: () -> Unit,
-    onOpenBios: () -> Unit,
     onOpenGameSettings: (serial: String, title: String) -> Unit,
     viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory),
 ) {
@@ -134,10 +133,8 @@ fun LibraryScreen(
         state = state,
         snackbarHostState = snackbarHostState,
         onOpenSettings = onOpenSettings,
-        onOpenBios = onOpenBios,
         onPickGameFolder = { pickGameFolder.launch(null) },
         onRefresh = viewModel::refresh,
-        onBootBios = viewModel::onBootBiosClicked,
         onGameClick = viewModel::onGameClicked,
         onGameSettingsClick = viewModel::onGameSettingsClicked,
         onSortSelected = viewModel::onSortSelected,
@@ -156,7 +153,6 @@ fun LibraryScreen(
 private val LibraryMessage.textRes: Int
     get() = when (this) {
         LibraryMessage.ScanFailed -> R.string.library_message_scan_failed
-        LibraryMessage.BiosRequired -> R.string.library_message_bios_required
         LibraryMessage.CoreUnavailable -> R.string.library_message_core_unavailable
         LibraryMessage.NoSerial -> R.string.library_message_no_serial
         LibraryMessage.ShortcutUnsupported -> R.string.library_message_shortcut_unsupported
@@ -168,10 +164,8 @@ private fun LibraryContent(
     state: LibraryUiState,
     snackbarHostState: SnackbarHostState,
     onOpenSettings: () -> Unit,
-    onOpenBios: () -> Unit,
     onPickGameFolder: () -> Unit,
     onRefresh: () -> Unit,
-    onBootBios: () -> Unit,
     onGameClick: (Game) -> Unit,
     onGameSettingsClick: (Game) -> Unit,
     onSortSelected: (LibrarySort) -> Unit,
@@ -280,13 +274,6 @@ private fun LibraryContent(
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.library_boot_bios)) },
-                            onClick = {
-                                menuOpen = false
-                                onBootBios()
-                            },
-                        )
-                        DropdownMenuItem(
                             text = { Text(stringResource(R.string.library_change_game_folder)) },
                             onClick = {
                                 menuOpen = false
@@ -325,19 +312,6 @@ private fun LibraryContent(
                     )
                 }
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (state.bios == null) {
-                        item(key = "bios-missing") {
-                            ListItem(
-                                headlineContent = { Text(stringResource(R.string.library_bios_missing)) },
-                                supportingContent = { Text(stringResource(R.string.library_bios_missing_summary)) },
-                                trailingContent = {
-                                    FilledTonalButton(onClick = onOpenBios) {
-                                        Text(stringResource(R.string.library_bios_set_up))
-                                    }
-                                },
-                            )
-                        }
-                    }
                     items(games, key = { it.key }) { entry ->
                         val game = entry.game
                         GameRow(
@@ -631,14 +605,12 @@ private fun LibraryContentPreview() {
         LibraryContent(
             state = LibraryUiState(
                 hasGameFolder = true,
-                games = listOf(LibraryEntry(Game(Uri.EMPTY, "Example Game (USA).chd", "SLUS-20312", true, 2_100_000_000L), listOf(Game(Uri.EMPTY, "Example Game (USA).chd", "SLUS-20312", true, 2_100_000_000L)), "example")),
+                games = listOf(LibraryEntry(Game(Uri.EMPTY, "Example Game (USA).sfc", "SNES-B19ED489", true, 2_100_000_000L), listOf(Game(Uri.EMPTY, "Example Game (USA).sfc", "SNES-B19ED489", true, 2_100_000_000L)), "example")),
             ),
             snackbarHostState = SnackbarHostState(),
             onOpenSettings = {},
-            onOpenBios = {},
             onPickGameFolder = {},
             onRefresh = {},
-            onBootBios = {},
             onGameClick = {},
             onGameSettingsClick = {},
             onSortSelected = {},

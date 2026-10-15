@@ -35,7 +35,8 @@ class BiosRepository(
     suspend fun import(uri: Uri): Bios? = withContext(Dispatchers.IO) {
         core.initialize()
         val metadata = core.readBiosMetadata(uri) ?: return@withContext null
-        val name = displayName(uri)?.let(::sanitizeFileName) ?: "bios.bin"
+        // Under the name the core looks for it by.
+        val name = metadata.fileName
         val target = File(core.biosDir, name)
         val temp = File(core.biosDir, "$name.tmp")
         contentResolver.openInputStream(uri)?.use { input ->

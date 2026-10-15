@@ -270,29 +270,10 @@ class LibraryRepository(
                     }
                 }
             }
-            // A cue sheet's tracks are not games of their own. Their names need not match the
-            // sheet's, so a folder with a cue sheet lists none of its raw images.
-            if (found.any { extensionOf(it.fileName) == "cue" }) found.removeAll { extensionOf(it.fileName) in TRACK_EXTENSIONS }
-            // A playlist (.m3u) starts its discs itself, so they are not games of their own either.
-            val members = found.filter { extensionOf(it.fileName) == "m3u" }.flatMapTo(HashSet()) { playlistMembers(it) }
-            if (members.isNotEmpty()) {
-                found.removeAll { extensionOf(it.fileName) != "m3u" && it.fileName.lowercase() in members }
-            }
             games += found
         }
         return games
     }
-
-    /** Lower-case file names a playlist lists. Names only: the discs are matched within the playlist's folder. */
-    private fun playlistMembers(playlist: GameEntity): Set<String> = runCatching {
-        contentResolver.openInputStream(Uri.parse(playlist.uri))?.bufferedReader()?.use { reader ->
-            reader.lineSequence()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("#") }
-                .map { it.substringAfterLast('/').substringAfterLast('\\').lowercase() }
-                .toSet()
-        }
-    }.getOrNull().orEmpty()
 
     private fun GameEntity.toGame() = Game(
         uri = Uri.parse(uri),
@@ -316,14 +297,12 @@ class LibraryRepository(
             Document.COLUMN_LAST_MODIFIED,
         )
 
-        /** What the core boots: disc images, playlists (.m3u), PS-EXEs and PSFs. */
-        val GAME_EXTENSIONS = setOf(
-            "cue", "bin", "img", "iso", "chd", "pbp", "ecm", "mds", "m3u",
-            "exe", "psexe", "ps-exe", "psf", "minipsf",
-        )
-
-        /** Raw images that are usually a cue sheet's tracks. */
-        val TRACK_EXTENSIONS = setOf("bin", "img")
+        /**
+         * What the core boots: SNES ROMs (with or without a copier header), Satellaview (.bs) and
+         * Sufami Turbo (.st) ones, and archives holding one. An archive without a SNES ROM is listed
+         * as unrecognized, since no serial can be read from it.
+         */
+        val GAME_EXTENSIONS = setOf("sfc", "smc", "swc", "fig", "bs", "st", "zip", "7z")
 
         fun extensionOf(fileName: String): String = fileName.substringAfterLast('.', "").lowercase()
     }
