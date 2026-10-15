@@ -505,7 +505,7 @@
     <string name="settings_about_summary">Version, source code and licenses</string>
     <string name="about_title">About</string>
     <string name="about_version">Version %1$s</string>
-    <string name="about_description">An emulator frontend for Android, with a stub emulation core to put a real one in place of.</string>
+    <string name="about_description">A Super NES and Super Famicom emulator for Android, built on MesenCE. It plays games with enhancement chips such as the SA-1 and Super FX, with save states, rewind and cheats.</string>
     <string name="about_bios_note">Play games dumped from cartridges you own. SNEScend does not include any games or firmware.</string>
     <string name="about_source">Source code</string>
     <string name="about_core">Emulation core</string>
